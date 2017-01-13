@@ -8,9 +8,10 @@ use Getopt::Std;
 use Parse::CSV;
 use File::Spec;
 use File::Path qw( mkpath );
+use File::Temp qw( tempfile tempdir );
 use File::Basename;
-use LWP::Simple;
 use LWP::UserAgent;
+use Archive::Zip;
 
 use Log::Message::Simple qw[:STD :CARP];
 use Data::Dumper;
@@ -32,14 +33,14 @@ my $datadir = File::Spec->rel2abs($opts{D});
 
 my $verbose = exists $opts{v};
 my $silent = exists $opts{q};
-my $debug = $verbose and not $silent;
+my $debug = ($verbose) && (not $silent);
 
 ################################################################################
 # the common client for download files
 my $client = LWP::UserAgent->new;
-if (exists $opts{U}) {
-  $client->agent($opts{U});
-}
+
+exists $opts{U} and $client->agent($opts{U});
+debug('User Agent: ' . $client->agent, $debug);
 
 ################################################################################
 # generate the full file path for a given record - the argument is a hashref
@@ -62,9 +63,15 @@ sub get_local_path {
 
 ################################################################################
 # determines if the local copy of item is current
-sub current_item {
+sub is_current {
   my ($item) = @_;
-  return undef;
+
+  my $path = get_local_path($item);
+  debug('Checking local file: ' . $path, $debug);
+
+  # TODO determine if the local file is up to date
+
+  (-f $path) ? $path : undef;
 }
 
 ################################################################################
@@ -74,20 +81,32 @@ sub download_item {
 
   my $path = get_local_path($item);
 
-  # download the file to a temp location
+  # download the zip file to a temp location
   my $resp = $client->get($item->{'Download GeoPDF'});
+  die $resp->status_line if ($resp->is_error);
 
-  if ($resp->is_success) {
-    print Dumper($resp->headers);
-  } else {
-    die $resp->status_line;
-  }
+  # save the zipfile to a temporary file
+  my ($fh, $zipfile) = tempfile();
+  debug('Saving download: ' . $zipfile, $debug);
+
+  binmode $fh;
+  print $fh $resp->decoded_content;
+  close $fh;
 
   # make necessary directories
   my $dirname = dirname($path);
   mkpath($dirname);
 
   # extract the file in the new folder
+  # TODO error checking on the archive
+  my $zip = Archive::Zip->new($zipfile);
+  my @members = $zip->members;
+  my $member = $members[0];
+
+  debug('Extracting: ' . $member->fileName, $debug);
+  $member->extractToFileNamed($path);
+
+  # TODO more error checking
 
   return $path;
 }
@@ -104,7 +123,7 @@ my $csv = Parse::CSV->new(
 
   # only return current, US Topo maps
   filter => sub {
-    (($_->{'Series'} eq 'US Topo') and ($_->{'Version'} eq 'Current')) ? $_ : undef
+    (($_->{'Series'} eq 'US Topo') && ($_->{'Version'} eq 'Current')) ? $_ : undef
   }
 );
 
@@ -113,12 +132,12 @@ while (my $item = $csv->fetch) {
   my $mapname = sprintf('%s [%s]', $item->{'Map Name'}, $item->{'Cell ID'});
   msg('Processing map: ' . $mapname, not $silent);
 
-  my $local_file = current_item($item);
+  my $local_file = is_current($item);
 
   if ($local_file) {
-    debug('=> Map is up to date: ' . $local_file, $local_file);
+    debug('Map is up to date: ' . $local_file, $debug);
   } else {
-    debug('=> Downloading map: ' . $item->{'Download GeoPDF'}, $debug);
+    debug('Downloading map: ' . $item->{'Download GeoPDF'}, $debug);
     $local_file = download_item($item);
   }
 
