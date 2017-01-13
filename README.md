@@ -1,8 +1,8 @@
 # US Topo Downloader
 
-Catalog information: https://geonames.usgs.gov/pls/topomaps/
+Download and maintain a local catalog of all current US Topo maps.
 
-[ScienceBase API](https://my.usgs.gov/confluence/display/sciencebase/ScienceBase)
+Catalog information (including current version): https://geonames.usgs.gov/pls/topomaps/
 
 Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=categories/9797/3572).
 
@@ -12,10 +12,10 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 
 ## Usage
 
-TODO
+ustopo.pl -C topomaps_all.csv -D /path/to/maps/data
 
 ## Improvements
 
 * Use ScienceBase API directly, rather than CSV catalog
 * Generate browseable HTML file offline of maps
-
+* Maintain local database of catalog for searching
