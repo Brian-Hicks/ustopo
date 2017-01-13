@@ -6,11 +6,13 @@ use strict;
 
 use Getopt::Long qw( :config bundling );
 use Pod::Usage;
+
 use Parse::CSV;
 use File::Spec;
 use File::Path qw( mkpath );
 use File::Temp qw( tempfile );
 use File::Basename;
+
 use LWP::UserAgent;
 use Archive::Zip;
 
@@ -192,7 +194,7 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 
 =head1 SYNOPSIS
 
-ustopo.pl --catalog=file --data=dir [options]
+  ustopo.pl --catalog=file --data=dir [options]
 
 =head1 OPTIONS
 
