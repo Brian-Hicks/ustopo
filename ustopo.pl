@@ -79,7 +79,7 @@ sub is_current {
   my ($item) = @_;
 
   my $pdf_path = get_local_path($item);
-  debug('Checking local file: ' . $pdf_path, $debug);
+  debug('Checking for local file: ' . $pdf_path, $debug);
 
   # TODO determine if the local file is up to date
 
@@ -96,9 +96,18 @@ sub extract_to {
   mkpath($dirname);
 
   my $zip = Archive::Zip->new($zipfile);
+  croak 'Error loading archive.' unless defined $zip;
 
   # only process the first entry
   my @members = $zip->members;
+  if (scalar(@members) == 0) {
+    carp 'Empty archive.';
+    return;
+  } elsif (scalar(@members) > 1) {
+    carp 'Unexpected entries in archive.';
+    return;
+  }
+
   my $entry = $members[0];
 
   debug('Extracting: ' . $entry->fileName, $debug);
@@ -143,7 +152,6 @@ sub download_item {
   my $zipfile = fetch($item->{'Download GeoPDF'});
   croak 'download error' unless -s $zipfile;
 
-  # TODO error checking on the archive
   extract_to($zipfile, $pdf_path);
 
   # TODO compare file size to item entry
