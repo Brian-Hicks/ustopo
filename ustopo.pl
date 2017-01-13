@@ -20,16 +20,21 @@ use Data::Dumper;
 
 # -C catalog file
 # -D data directory
+# -U custom user agent for download client
+# -m set max number of items to download
+# -r set max number of retries
 # -v debug logging
 # -q silent mode
-# -U custom user agent for download client
 # TODO path format string for local file
 my %opts;
 
-getopts('C:D:U:qv', \%opts);
+getopts('C:D:U:m:qv', \%opts);
 
 my $catalog = File::Spec->rel2abs($opts{C});
 my $datadir = File::Spec->rel2abs($opts{D});
+
+my $max_dl = $opts{m} || 0;
+my $retry_dl = $opts{r} || 3;
 
 my $verbose = exists $opts{v};
 my $silent = exists $opts{q};
@@ -83,10 +88,14 @@ sub download_item {
 
   # download the zip file to a temp location
   my $resp = $client->get($item->{'Download GeoPDF'});
+
+  # TODO log size of dowloaded file
+  # TODO log bytes / sec after download?
+  debug($resp->status_line, $debug);
   die $resp->status_line if ($resp->is_error);
 
   # save the zipfile to a temporary file
-  my ($fh, $zipfile) = tempfile();
+  my ($fh, $zipfile) = tempfile(UNLINK => 1);
   debug('Saving download: ' . $zipfile, $debug);
 
   binmode $fh;
@@ -97,17 +106,18 @@ sub download_item {
   my $dirname = dirname($path);
   mkpath($dirname);
 
-  # extract the file in the new folder
   # TODO error checking on the archive
+  # TODO examine size against catalog?
+
+  # extract the file in the new folder
   my $zip = Archive::Zip->new($zipfile);
   my @members = $zip->members;
-  my $member = $members[0];
+  my $entry = $members[0];
 
-  debug('Extracting: ' . $member->fileName, $debug);
-  $member->extractToFileNamed($path);
+  debug('Extracting: ' . $entry->fileName, $debug);
+  $entry->extractToFileNamed($path);
 
-  # TODO more error checking
-
+  unlink $zipfile;
   return $path;
 }
 
@@ -134,14 +144,16 @@ while (my $item = $csv->fetch) {
 
   my $local_file = is_current($item);
 
+  # TODO monitor download count
+
   if ($local_file) {
     debug('Map is up to date: ' . $local_file, $debug);
   } else {
     debug('Downloading map: ' . $item->{'Download GeoPDF'}, $debug);
     $local_file = download_item($item);
-  }
 
-  die;
+    # TODO retry failed downloads
+  }
 }
 
 # search for files that shouldn't be in the data directory
