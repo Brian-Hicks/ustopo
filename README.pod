@@ -1,0 +1,58 @@
+=head1 NAME
+
+ustopo.pl -- Maintains an offline catalog of US Topo maps.
+
+=head1 SYNOPSIS
+
+ustopo.pl --catalog=file --data=dir [options]
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<--catalog=file>
+: CSV catalog file from The National Map project.
+
+=item B<--data=dir>
+: Directory location to save maps when downloading.
+
+=item B<--agent=string>
+: Set the User Agent string for the download client.
+
+=item B<--verbose>
+: Display extra logging output for debugging.
+
+=item B<--silent>
+: Supress all logging output (overrides --verbose).
+
+=item B<--help>
+: Print a brief help message and exit.
+
+=back
+
+=head1 DESCRIPTION
+
+B<ustopo.pl> maintains a local repository of maps from the US Topo catalog.
+
+Download the latest catalog here: L<https://geonames.usgs.gov/pls/topomaps/>
+
+Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=categories/9797/3572>.
+
+=head1 IMPROVEMENTS
+
+=over 8
+
+=item Use ScienceBase API directly, rather than CSV catalog.
+
+=item Generate browseable HTML file offline of maps.
+
+=item Maintain local database of catalog for searching.
+
+=item Remove files from the data directory that are not in the catalog.
+
+=item Retry failed downloads (default to 3).
+
+=item Specify maximum number of maps to download per session (default to unlimited).
+
+=back
+

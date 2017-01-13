@@ -4,7 +4,8 @@
 
 use strict;
 
-use Getopt::Std;
+use Getopt::Long qw( :config bundling );
+use Pod::Usage;
 use Parse::CSV;
 use File::Spec;
 use File::Path qw( mkpath );
@@ -16,35 +17,39 @@ use Archive::Zip;
 use Log::Message::Simple qw( :STD :CARP );
 use Data::Dumper;
 
-# parse command line options TODO error checking
+################################################################################
+# parse command line options
+my $opt_silent = 0;
+my $opt_verbose = 0;
+my $opt_help = 0;
+my $opt_catalog = undef;
+my $opt_datadir = undef;
+my $opt_agent = undef;
 
-# -C catalog file
-# -D data directory
-# -U custom user agent for download client
-# -m set max number of items to download
-# -r set max number of retries
-# -v debug logging
-# -q silent mode
-# TODO path format string for local file
-my %opts;
+GetOptions(
+  'catalog|C=s' => \$opt_catalog,
+  'datadir|D=s' => \$opt_datadir,
+  'silent|s' => \$opt_silent,
+  'verbose|v' => \$opt_verbose,
+  'agent=s' => \$opt_agent,
+  'help|?' => \$opt_help,
+) or pod2usage(1);
 
-getopts('C:D:U:m:qv', \%opts);
+pod2usage(0) if $opt_help;
 
-my $catalog = File::Spec->rel2abs($opts{C});
-my $datadir = File::Spec->rel2abs($opts{D});
+# TODO error cecking
 
-my $max_dl = $opts{m} || 0;
-my $retry_dl = $opts{r} || 3;
+my $catalog = File::Spec->rel2abs($opt_catalog);
+my $datadir = File::Spec->rel2abs($opt_datadir);
 
-my $verbose = exists $opts{v};
-my $silent = exists $opts{q};
-my $debug = ($verbose) && (not $silent);
+my $silent = $opt_silent;
+my $debug = ($opt_verbose) && (not $opt_silent);
 
 ################################################################################
 # the common client for download files
 my $client = LWP::UserAgent->new;
 
-exists $opts{U} and $client->agent($opts{U});
+defined $opt_agent and $client->agent($opt_agent);
 debug('User Agent: ' . $client->agent, $debug);
 
 ################################################################################
@@ -171,17 +176,72 @@ while (my $item = $csv->fetch) {
 
   my $local_file = is_current($item);
 
-  # TODO monitor download count
-
   if ($local_file) {
     debug('Map is up to date: ' . $local_file, $debug);
   } else {
     debug('Downloading map: ' . $item->{'Download GeoPDF'}, $debug);
     $local_file = download_item($item);
-
-    # TODO retry failed downloads
   }
 }
 
-# search for files that shouldn't be in the data directory
+__END__
 
+=head1 NAME
+
+ustopo.pl -- Maintains an offline catalog of US Topo maps.
+
+=head1 SYNOPSIS
+
+ustopo.pl --catalog=file --data=dir [options]
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<--catalog=file>
+: CSV catalog file from The National Map project.
+
+=item B<--data=dir>
+: Directory location to save maps when downloading.
+
+=item B<--agent=string>
+: Set the User Agent string for the download client.
+
+=item B<--verbose>
+: Display extra logging output for debugging.
+
+=item B<--silent>
+: Supress all logging output (overrides --verbose).
+
+=item B<--help>
+: Print a brief help message and exit.
+
+=back
+
+=head1 DESCRIPTION
+
+B<ustopo.pl> maintains a local repository of maps from the US Topo catalog.
+
+Download the latest catalog here: L<https://geonames.usgs.gov/pls/topomaps/>
+
+Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=categories/9797/3572>.
+
+=head1 IMPROVEMENTS
+
+=over 8
+
+=item Use ScienceBase API directly, rather than CSV catalog.
+
+=item Generate browseable HTML file offline of maps.
+
+=item Maintain local database of catalog for searching.
+
+=item Remove files from the data directory that are not in the catalog.
+
+=item Retry failed downloads (default to 3).
+
+=item Specify maximum number of maps to download per session (default to unlimited).
+
+=back
+
+=cut
