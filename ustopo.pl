@@ -8,12 +8,12 @@ use Getopt::Std;
 use Parse::CSV;
 use File::Spec;
 use File::Path qw( mkpath );
-use File::Temp qw( tempfile tempdir );
+use File::Temp qw( tempfile );
 use File::Basename;
 use LWP::UserAgent;
 use Archive::Zip;
 
-use Log::Message::Simple qw[:STD :CARP];
+use Log::Message::Simple qw( :STD :CARP );
 use Data::Dumper;
 
 # parse command line options TODO error checking
@@ -71,12 +71,58 @@ sub get_local_path {
 sub is_current {
   my ($item) = @_;
 
-  my $path = get_local_path($item);
-  debug('Checking local file: ' . $path, $debug);
+  my $pdf_path = get_local_path($item);
+  debug('Checking local file: ' . $pdf_path, $debug);
 
   # TODO determine if the local file is up to date
 
-  (-f $path) ? $path : undef;
+  (-f $pdf_path) ? $pdf_path : undef;
+}
+
+################################################################################
+# extract the first member of an archive to a specifc filename
+sub extract_to {
+  my ($zipfile, $tofile) = @_;
+
+  # make necessary directories
+  my $dirname = dirname($tofile);
+  mkpath($dirname);
+
+  my $zip = Archive::Zip->new($zipfile);
+
+  # only process the first entry
+  my @members = $zip->members;
+  my $entry = $members[0];
+
+  debug('Extracting: ' . $entry->fileName, $debug);
+  $entry->extractToFileNamed($tofile);
+}
+
+################################################################################
+# download a file and save it locally - NOTE file will be deleted on exit
+sub fetch {
+  my ($url) = @_;
+
+  my $resp = $client->get($url);
+
+  # TODO log bytes / sec?
+  my $dl_length = length($resp->decoded_content);
+  my $dl_status = sprintf('HTTP %s - %d bytes', $resp->status_line, $dl_length);
+  debug($dl_status, $debug);
+
+  if ($resp->is_error) {
+    croak 'Error downloading file: ' . $resp->status_line;
+  }
+
+  # save the zipfile to a temporary file
+  my ($fh, $tmpfile) = tempfile(UNLINK => 1);
+  debug('Saving download: ' . $tmpfile, $debug);
+
+  binmode $fh;
+  print $fh $resp->decoded_content;
+  close $fh;
+
+  return $tmpfile;
 }
 
 ################################################################################
@@ -84,41 +130,22 @@ sub is_current {
 sub download_item {
   my ($item) = @_;
 
-  my $path = get_local_path($item);
+  my $pdf_path = get_local_path($item);
 
   # download the zip file to a temp location
-  my $resp = $client->get($item->{'Download GeoPDF'});
-
-  # TODO log size of dowloaded file
-  # TODO log bytes / sec after download?
-  debug($resp->status_line, $debug);
-  die $resp->status_line if ($resp->is_error);
-
-  # save the zipfile to a temporary file
-  my ($fh, $zipfile) = tempfile(UNLINK => 1);
-  debug('Saving download: ' . $zipfile, $debug);
-
-  binmode $fh;
-  print $fh $resp->decoded_content;
-  close $fh;
-
-  # make necessary directories
-  my $dirname = dirname($path);
-  mkpath($dirname);
+  my $zipfile = fetch($item->{'Download GeoPDF'});
+  croak 'download error' unless -s $zipfile;
 
   # TODO error checking on the archive
-  # TODO examine size against catalog?
+  extract_to($zipfile, $pdf_path);
 
-  # extract the file in the new folder
-  my $zip = Archive::Zip->new($zipfile);
-  my @members = $zip->members;
-  my $entry = $members[0];
+  # TODO compare file size to item entry
+  my $len_pdf = -s $pdf_path;
+  my $len_item = $item->{'Byte Count'};
+  debug("Extracted $len_pdf bytes - expected $len_item", $debug);
 
-  debug('Extracting: ' . $entry->fileName, $debug);
-  $entry->extractToFileNamed($path);
-
-  unlink $zipfile;
-  return $path;
+  unlink $zipfile or carp $!;
+  return $pdf_path;
 }
 
 ################################################################################
