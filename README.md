@@ -25,7 +25,7 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 
 # REQUIREMENTS
 
-- **Log::Simple** - debug and logging output
+- **Log::Message::Simple** - debug and logging output
 - **Parse::CSV** - used to parse the catalog file
 - **Mozilla::CA** - recommended for HTTPS connections
 

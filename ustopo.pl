@@ -241,7 +241,7 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 
 =over
 
-=item B<Log::Simple> - debug and logging output
+=item B<Log::Message::Simple> - debug and logging output
 
 =item B<Parse::CSV> - used to parse the catalog file
 
