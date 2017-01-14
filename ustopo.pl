@@ -111,7 +111,11 @@ sub extract_to {
 
   my $entry = $members[0];
 
-  debug('Extracting: ' . $entry->fileName, $debug);
+  my $debug_msg = sprintf('Extracting: %s (%d bytes)',
+                          $entry->fileName, $entry->uncompressedSize);
+
+  debug($debug_msg, $debug);
+
   $entry->extractToFileNamed($tofile);
 }
 
@@ -122,19 +126,18 @@ sub fetch {
 
   my $time_start = [gettimeofday];
   my $resp = $client->get($url);
-
   my $elapsed = tv_interval($time_start);
-  my $dl_length = length($resp->decoded_content);
-  my $mbps = ($dl_length / $elapsed) / (1024*1024);
 
-  my $dl_status = sprintf('HTTP %s - %d bytes in %f seconds (%f MB/s)',
-                          $resp->status_line, $dl_length, $elapsed, $mbps);
+  debug('HTTP ' . $resp->status_line, $debug);
 
-  debug($dl_status, $debug);
-
+  # TODO maybe better to go to the next file?  especially for 404...
   if ($resp->is_error) {
     croak 'Error downloading file: ' . $resp->status_line;
   }
+
+  my $dl_length = length($resp->decoded_content);
+  my $mbps = ($dl_length / $elapsed) / (1024*1024);
+  debug("Downloaded $dl_length bytes in $elapsed seconds ($mbps MB/s)", $debug);
 
   # save the zipfile to a temporary file
   my ($fh, $tmpfile) = tempfile(UNLINK => 1);
@@ -160,10 +163,8 @@ sub download_item {
 
   extract_to($zipfile, $pdf_path);
 
-  # TODO compare file size to item entry
-  my $len_pdf = -s $pdf_path;
-  my $len_item = $item->{'Byte Count'};
-  debug("Extracted $len_pdf bytes", $debug);
+  # compare file size to published item size in catalog
+  croak 'size mismatch' unless (-s $pdf_path eq $item->{'Byte Count'});
 
   unlink $zipfile or carp $!;
   return $pdf_path;
