@@ -15,6 +15,7 @@ use File::Basename;
 
 use LWP::UserAgent;
 use Archive::Zip;
+use Time::HiRes qw( gettimeofday tv_interval );
 
 use Log::Message::Simple qw( :STD :CARP );
 use Data::Dumper;
@@ -119,11 +120,16 @@ sub extract_to {
 sub fetch {
   my ($url) = @_;
 
+  my $time_start = [gettimeofday];
   my $resp = $client->get($url);
 
-  # TODO log bytes / sec?
+  my $elapsed = tv_interval($time_start);
   my $dl_length = length($resp->decoded_content);
-  my $dl_status = sprintf('HTTP %s - %d bytes', $resp->status_line, $dl_length);
+  my $mbps = ($dl_length / $elapsed) / (1024*1024);
+
+  my $dl_status = sprintf('HTTP %s - %d bytes in %f seconds (%f MB/s)',
+                          $resp->status_line, $dl_length, $elapsed, $mbps);
+
   debug($dl_status, $debug);
 
   if ($resp->is_error) {
