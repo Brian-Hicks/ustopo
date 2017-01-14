@@ -14,7 +14,7 @@ use File::Temp qw( tempfile );
 use File::Basename;
 
 use LWP::UserAgent;
-use Archive::Zip;
+use Archive::Zip qw( :ERROR_CODES );
 use Time::HiRes qw( gettimeofday tv_interval );
 
 use Log::Message::Simple qw( :STD :CARP );
@@ -40,7 +40,7 @@ GetOptions(
 
 pod2usage(0) if $opt_help;
 
-# TODO error cecking
+# TODO error checking
 
 my $catalog = File::Spec->rel2abs($opt_catalog);
 my $datadir = File::Spec->rel2abs($opt_datadir);
@@ -105,26 +105,29 @@ sub extract_to {
   mkpath($dirname);
 
   my $zip = Archive::Zip->new($zipfile);
-  croak 'Error loading archive.' unless defined $zip;
+  croak 'error loading archive' unless defined $zip;
 
   # only process the first entry
   my @members = $zip->members;
   if (scalar(@members) == 0) {
-    carp 'Empty archive.';
+    carp 'empty archive';
     return;
   } elsif (scalar(@members) > 1) {
-    carp 'Unexpected entries in archive.';
+    carp 'unexpected entries in archive';
     return;
   }
 
   my $entry = $members[0];
 
-  my $debug_msg = sprintf('Extracting: %s (%d bytes)',
-                          $entry->fileName, $entry->uncompressedSize);
+  my $name = $entry->fileName;
+  my $full_size = $entry->uncompressedSize;
+  debug("Extracting: $name ($full_size bytes)", $debug);
 
-  debug($debug_msg, $debug);
+  if ($entry->extractToFileNamed($tofile) != AZ_OK) {
+    croak 'error writing file';
+  }
 
-  $entry->extractToFileNamed($tofile);
+  debug("Wrote: $tofile", $debug);
 }
 
 ################################################################################
@@ -140,7 +143,7 @@ sub fetch {
 
   # TODO maybe better to go to the next file?  especially for 404...
   if ($resp->is_error) {
-    croak 'Error downloading file: ' . $resp->status_line;
+    croak 'download error: ' . $resp->status_line;
   }
 
   my $dl_length = length($resp->decoded_content);
