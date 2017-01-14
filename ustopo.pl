@@ -61,7 +61,7 @@ sub get_local_path {
   my ($item) = @_;
 
   # sanitize the map name to get a file name
-  my $filename = $item->{'Cell Name'};
+  my $filename = $item->{'Map Name'};
   $filename =~ s/[^A-Za-z0-9_ -]/_/g;
   $filename .= '.pdf';
 
@@ -135,6 +135,8 @@ sub extract_to {
 sub fetch {
   my ($url) = @_;
 
+  debug("Downloading: $url", $debug);
+
   my $time_start = [gettimeofday];
   my $resp = $client->get($url);
   my $elapsed = tv_interval($time_start);
@@ -199,15 +201,18 @@ my $csv = Parse::CSV->new(
 
 # run through the current items
 while (my $item = $csv->fetch) {
-  my $mapname = sprintf('%s [%s]', $item->{'Map Name'}, $item->{'Cell ID'});
-  msg("Processing map: $mapname", not $silent);
+  my $name = $item->{'Map Name'};
+  my $state = $item->{'Primary State'};
+  my $cell_id = $item->{'Cell ID'};
+
+  msg("Processing map: $name, $state <$cell_id>", not $silent);
 
   my $local_file = is_current($item);
 
   if ($local_file) {
     debug("Map is up to date: $local_file", $debug);
   } else {
-    debug('Downloading map: ' . $item->{'Download GeoPDF'}, $debug);
+    debug("Download required for <$cell_id>", $debug);
     $local_file = download_item($item);
   }
 }
