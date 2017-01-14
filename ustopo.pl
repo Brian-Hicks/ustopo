@@ -80,11 +80,19 @@ sub is_current {
   my ($item) = @_;
 
   my $pdf_path = get_local_path($item);
+
+  # first, make sure the file exists
   debug("Checking for local file: $pdf_path", $debug);
+  return undef unless -f $pdf_path;
 
-  # TODO determine if the local file is up to date
+  # make sure the size of the local file matches the published item
+  my $pdf_len = -s $pdf_path;
+  my $item_len = $item->{'Byte Count'};
+  debug("Local file size: $pdf_len bytes (expecting $item_len)", $debug);
+  return undef unless ($pdf_len eq $item_len);
 
-  (-f $pdf_path) ? $pdf_path : undef;
+  # all is well...
+  return $pdf_path;
 }
 
 ################################################################################
@@ -260,6 +268,8 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 =item Maintain local database of catalog for searching.
 
 =item Remove files from the data directory that are not in the catalog.
+
+=item Improve check for a current file using PDF metadata.
 
 =item Retry failed downloads (default to 3).
 
