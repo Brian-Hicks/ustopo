@@ -213,25 +213,19 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 
 =head1 OPTIONS
 
-=over 8
+=over
 
-=item B<--catalog=file>
-: CSV catalog file from The National Map project.
+=item B<--catalog=file> : CSV catalog file from The National Map project.
 
-=item B<--data=dir>
-: Directory location to save maps when downloading.
+=item B<--data=dir> : Directory location to save maps when downloading.
 
-=item B<--agent=string>
-: Set the User Agent string for the download client.
+=item B<--agent=string> : Set the User Agent string for the download client.
 
-=item B<--verbose>
-: Display extra logging output for debugging.
+=item B<--verbose> : Display extra logging output for debugging.
 
-=item B<--silent>
-: Supress all logging output (overrides --verbose).
+=item B<--silent> : Supress all logging output (overrides --verbose).
 
-=item B<--help>
-: Print a brief help message and exit.
+=item B<--help> : Print a brief help message and exit.
 
 =back
 
@@ -243,9 +237,21 @@ Download the latest catalog here: L<https://geonames.usgs.gov/pls/topomaps/>
 
 Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=categories/9797/3572>.
 
+=head1 REQUIREMENTS
+
+=over
+
+=item B<Log::Simple> - debug and logging output
+
+=item B<Parse::CSV> - used to parse the catalog file
+
+=item B<Mozilla::CA> - recommended for HTTPS connections
+
+=back
+
 =head1 IMPROVEMENTS
 
-=over 8
+=over
 
 =item Use ScienceBase API directly, rather than CSV catalog.
 
