@@ -80,7 +80,7 @@ sub is_current {
   my ($item) = @_;
 
   my $pdf_path = get_local_path($item);
-  debug('Checking for local file: ' . $pdf_path, $debug);
+  debug("Checking for local file: $pdf_path", $debug);
 
   # TODO determine if the local file is up to date
 
@@ -138,7 +138,7 @@ sub fetch {
 
   # save the zipfile to a temporary file
   my ($fh, $tmpfile) = tempfile(UNLINK => 1);
-  debug('Saving download: ' . $tmpfile, $debug);
+  debug("Saving download: $tmpfile", $debug);
 
   binmode $fh;
   print $fh $resp->decoded_content;
@@ -163,7 +163,7 @@ sub download_item {
   # TODO compare file size to item entry
   my $len_pdf = -s $pdf_path;
   my $len_item = $item->{'Byte Count'};
-  debug("Extracted $len_pdf bytes - expected $len_item", $debug);
+  debug("Extracted $len_pdf bytes", $debug);
 
   unlink $zipfile or carp $!;
   return $pdf_path;
@@ -172,8 +172,8 @@ sub download_item {
 ################################################################################
 ## MAIN ENTRY
 
-msg('Using data directory: ' . $datadir, not $silent);
-msg('Loading catalog: ' . $catalog, not $silent);
+msg("Using data directory: $datadir", not $silent);
+msg("Loading catalog: $catalog", not $silent);
 
 my $csv = Parse::CSV->new(
   file => $catalog,
@@ -188,12 +188,12 @@ my $csv = Parse::CSV->new(
 # run through the current items
 while (my $item = $csv->fetch) {
   my $mapname = sprintf('%s [%s]', $item->{'Map Name'}, $item->{'Cell ID'});
-  msg('Processing map: ' . $mapname, not $silent);
+  msg("Processing map: $mapname", not $silent);
 
   my $local_file = is_current($item);
 
   if ($local_file) {
-    debug('Map is up to date: ' . $local_file, $debug);
+    debug("Map is up to date: $local_file", $debug);
   } else {
     debug('Downloading map: ' . $item->{'Download GeoPDF'}, $debug);
     $local_file = download_item($item);
