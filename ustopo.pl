@@ -100,6 +100,8 @@ sub is_current {
 sub extract_to {
   my ($zipfile, $tofile) = @_;
 
+  debug("Loading archive: $zipfile", $debug);
+
   # make necessary directories
   my $dirname = dirname($tofile);
   mkpath($dirname);
@@ -212,7 +214,7 @@ while (my $item = $csv->fetch) {
   if ($local_file) {
     debug("Map is up to date: $local_file", $debug);
   } else {
-    debug("Download required for <$cell_id>", $debug);
+    debug("Download required <$cell_id>", $debug);
     $local_file = download_item($item);
   }
 }
