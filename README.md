@@ -43,7 +43,7 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 - **Parse::CSV** - used to parse the catalog file
 - **Mozilla::CA** - recommended for HTTPS connections
 
-# IMPROVEMENTS
+# TODO
 
 - Use ScienceBase API directly, rather than CSV catalog.
 - Generate browseable HTML file offline of maps.
