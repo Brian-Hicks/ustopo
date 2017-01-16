@@ -1,6 +1,18 @@
 #!/usr/bin/perl -w
 
-# basic script for maintaining an offline copy of the US Topo map collection
+=pod
+
+=head1 NAME
+
+ustopo.pl -- Maintains an offline catalog of US Topo maps.
+
+=head1 SYNOPSIS
+
+  ustopo.pl --catalog=file --data=dir [options]
+
+=cut
+
+################################################################################
 
 use strict;
 
@@ -20,6 +32,30 @@ use Time::HiRes qw( gettimeofday tv_interval );
 
 use Log::Message::Simple qw( :STD :CARP );
 use Data::Dumper;
+
+################################################################################
+
+=pod
+
+=head1 OPTIONS
+
+=over
+
+=item B<--catalog=file> : CSV catalog file from The National Map project.
+
+=item B<--data=dir> : Directory location to save maps when downloading.
+
+=item B<--agent=string> : Set the User Agent string for the download client.
+
+=item B<--verbose> : Display extra logging output for debugging.
+
+=item B<--silent> : Supress all logging output (overrides --verbose).
+
+=item B<--help> : Print a brief help message and exit.
+
+=back
+
+=cut
 
 ################################################################################
 # a convenience method for displaying usage information & exit with an error by default
@@ -70,7 +106,7 @@ my $silent = $opt_silent;
 my $debug = ($opt_verbose) && (not $opt_silent);
 
 ################################################################################
-# the common client for download files
+# configure the common client for download files
 my $client = LWP::UserAgent->new;
 
 defined $opt_agent and $client->agent($opt_agent);
@@ -242,31 +278,7 @@ while (my $item = $csv->fetch) {
 
 __END__
 
-=head1 NAME
-
-ustopo.pl -- Maintains an offline catalog of US Topo maps.
-
-=head1 SYNOPSIS
-
-  ustopo.pl --catalog=file --data=dir [options]
-
-=head1 OPTIONS
-
-=over
-
-=item B<--catalog=file> : CSV catalog file from The National Map project.
-
-=item B<--data=dir> : Directory location to save maps when downloading.
-
-=item B<--agent=string> : Set the User Agent string for the download client.
-
-=item B<--verbose> : Display extra logging output for debugging.
-
-=item B<--silent> : Supress all logging output (overrides --verbose).
-
-=item B<--help> : Print a brief help message and exit.
-
-=back
+=pod
 
 =head1 DESCRIPTION
 
@@ -319,6 +331,8 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 =item Retry failed downloads (default to 3).
 
 =item Specify maximum number of maps to download per session (default to unlimited).
+
+=item Use a lock file.
 
 =back
 

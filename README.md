@@ -52,3 +52,4 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 - Improve check for a current file using PDF metadata.
 - Retry failed downloads (default to 3).
 - Specify maximum number of maps to download per session (default to unlimited).
+- Use a lock file.
