@@ -212,7 +212,7 @@ sub fetch {
   debug("Downloaded $dl_length bytes in $elapsed seconds ($mbps MB/s)", $debug);
 
   # save the zipfile to a temporary file
-  my ($fh, $tmpfile) = tempfile(UNLINK => 1);
+  my ($fh, $tmpfile) = tempfile('ustopoXXXX', TMPDIR => 1, UNLINK => 1);
   debug("Saving download: $tmpfile", $debug);
 
   binmode $fh;
@@ -333,6 +333,8 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 =item Specify maximum number of maps to download per session (default to unlimited).
 
 =item Use a lock file.
+
+=item Support custom filename formats using catalog fields.
 
 =back
 

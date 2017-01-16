@@ -53,3 +53,4 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 - Retry failed downloads (default to 3).
 - Specify maximum number of maps to download per session (default to unlimited).
 - Use a lock file.
+- Support custom filename formats using catalog fields.
