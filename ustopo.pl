@@ -5,6 +5,7 @@
 use strict;
 
 use Getopt::Long qw( :config bundling );
+use Scalar::Util qw( looks_like_number );
 use Pod::Usage;
 
 use Parse::CSV;
@@ -19,6 +20,23 @@ use Time::HiRes qw( gettimeofday tv_interval );
 
 use Log::Message::Simple qw( :STD :CARP );
 use Data::Dumper;
+
+################################################################################
+# a convenience method for displaying usage information & exit with an error by default
+sub usage {
+  my $message = shift;
+  my $exitval = 1;
+
+  if (looks_like_number($message)) {
+    $exitval = $message;
+    $message = undef;
+  }
+
+  pod2usage( -message => $message, -exitval => $exitval );
+
+  # pod2usage should take care of this, but just in case...
+  exit $exitval;
+}
 
 ################################################################################
 # parse command line options
@@ -36,11 +54,14 @@ GetOptions(
   'verbose|v' => \$opt_verbose,
   'agent=s' => \$opt_agent,
   'help|?' => \$opt_help,
-) or pod2usage(1);
+) or usage(1);
 
-pod2usage(0) if $opt_help;
+usage(0) if $opt_help;
 
-# TODO error checking
+usage('Catalog is required') unless defined $opt_catalog;
+usage("File not found: $opt_catalog") unless -s $opt_catalog;
+usage('Data directory is required',) unless defined $opt_datadir;
+usage("Directory not found: $opt_datadir",) unless -d $opt_catalog;
 
 my $catalog = File::Spec->rel2abs($opt_catalog);
 my $datadir = File::Spec->rel2abs($opt_datadir);
