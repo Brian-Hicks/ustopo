@@ -8,7 +8,7 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 
 # OPTIONS
 
-- **--catalog=file** : CSV catalog file from The National Map project.
+- **--catalog=file** : CSV catalog file from the USGS.
 - **--data=dir** : Directory location to save maps when downloading.
 - **--agent=string** : Set the User Agent string for the download client.
 - **--verbose** : Display extra logging output for debugging.
@@ -20,8 +20,8 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 **ustopo.pl** maintains a local repository of maps from the US Topo catalog.  The USGS produces
 high-resolution PDF's that contain geospacial extensions for use in mobile applications such
 as [Avenza PDF Maps](https://www.avenzamaps.com).  Additionally, the USGS makes these maps
-available free for public use.  According to The National Map project, about 75 maps are added
-to the catalog each day.  The entire size of the catalog is approximately 1.5TB.
+available free for public use.  According to the USGS, about 75 maps are added to the catalog
+each day.  The entire size of the catalog is approximately 1.5TB.
 
 These maps are also suitable for printing.  They contain multiple layers, including topographic
 lines, satellite imagery, road information & landmarks.  For best results, use an application

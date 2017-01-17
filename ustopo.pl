@@ -41,7 +41,7 @@ use Data::Dumper;
 
 =over
 
-=item B<--catalog=file> : CSV catalog file from The National Map project.
+=item B<--catalog=file> : CSV catalog file from the USGS.
 
 =item B<--data=dir> : Directory location to save maps when downloading.
 
@@ -212,7 +212,7 @@ sub fetch {
   debug("Downloaded $dl_length bytes in $elapsed seconds ($mbps MB/s)", $debug);
 
   # save the zipfile to a temporary file
-  my ($fh, $tmpfile) = tempfile('ustopoXXXX', TMPDIR => 1, UNLINK => 1);
+  my ($fh, $tmpfile) = tempfile('ustopo_plXXXX', TMPDIR => 1, UNLINK => 1);
   debug("Saving download: $tmpfile", $debug);
 
   binmode $fh;
@@ -285,8 +285,8 @@ __END__
 B<ustopo.pl> maintains a local repository of maps from the US Topo catalog.  The USGS produces
 high-resolution PDF's that contain geospacial extensions for use in mobile applications such
 as L<Avenza PDF Maps|https://www.avenzamaps.com>.  Additionally, the USGS makes these maps
-available free for public use.  According to The National Map project, about 75 maps are added
-to the catalog each day.  The entire size of the catalog is approximately 1.5TB.
+available free for public use.  According to the USGS, about 75 maps are added to the catalog
+each day.  The entire size of the catalog is approximately 1.5TB.
 
 These maps are also suitable for printing.  They contain multiple layers, including topographic
 lines, satellite imagery, road information & landmarks.  For best results, use an application
