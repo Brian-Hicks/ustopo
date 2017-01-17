@@ -8,7 +8,7 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 
 =head1 SYNOPSIS
 
-  ustopo.pl --catalog=file --data=dir [options]
+  ustopo.pl --data=dir [options]
 
 =cut
 
@@ -20,12 +20,12 @@ use Getopt::Long qw( :config bundling );
 use Scalar::Util qw( looks_like_number );
 use Pod::Usage;
 
-use Parse::CSV;
 use File::Spec;
 use File::Path qw( mkpath );
 use File::Temp qw( tempfile );
 use File::Basename;
 
+use DBI;
 use LWP::UserAgent;
 use Archive::Zip qw( :ERROR_CODES );
 use Time::HiRes qw( gettimeofday tv_interval );
@@ -40,8 +40,6 @@ use Data::Dumper;
 =head1 OPTIONS
 
 =over
-
-=item B<--catalog=file> : CSV catalog file from the USGS.
 
 =item B<--data=dir> : Directory location to save maps when downloading.
 
@@ -79,12 +77,10 @@ sub usage {
 my $opt_silent = 0;
 my $opt_verbose = 0;
 my $opt_help = 0;
-my $opt_catalog = undef;
 my $opt_datadir = undef;
 my $opt_agent = undef;
 
 GetOptions(
-  'catalog|C=s' => \$opt_catalog,
   'datadir|D=s' => \$opt_datadir,
   'silent|s' => \$opt_silent,
   'verbose|v' => \$opt_verbose,
@@ -94,12 +90,9 @@ GetOptions(
 
 usage(0) if $opt_help;
 
-usage('Catalog is required') unless defined $opt_catalog;
-usage("File not found: $opt_catalog") unless -s $opt_catalog;
 usage('Data directory is required',) unless defined $opt_datadir;
 usage("Directory not found: $opt_datadir",) unless -d $opt_datadir;
 
-my $catalog = File::Spec->rel2abs($opt_catalog);
 my $datadir = File::Spec->rel2abs($opt_datadir);
 
 my $silent = $opt_silent;
@@ -111,6 +104,13 @@ my $client = LWP::UserAgent->new;
 
 defined $opt_agent and $client->agent($opt_agent);
 debug('User Agent: ' . $client->agent, $debug);
+
+################################################################################
+# initialize the database connection
+my $db_file = File::Spec->join($datadir, 'index.db');
+
+debug("Connecting to database $db_file", $debug);
+my $db = DBI->connect("dbi:SQLite:dbname=$db_file", '', '');
 
 ################################################################################
 # generate the full file path for a given record - the argument is a hashref
@@ -245,36 +245,32 @@ sub download_item {
 ################################################################################
 ## MAIN ENTRY
 
-msg("Using data directory: $datadir", not $silent);
-msg("Loading catalog: $catalog", not $silent);
+msg("Saving to directory: $datadir", not $silent);
 
-my $csv = Parse::CSV->new(
-  file => $catalog,
-  names => 1,
+# TODO update the database from ScienceBase
 
-  # only return current, US Topo maps
-  filter => sub {
-    (($_->{'Series'} eq 'US Topo') && ($_->{'Version'} eq 'Current')) ? $_ : undef
-  }
-);
+my $sth = $db->prepare(q{ SELECT * FROM maps; });
+$sth->execute();
 
-# run through the current items
-while (my $item = $csv->fetch) {
-  my $name = $item->{'Map Name'};
-  my $state = $item->{'Primary State'};
-  my $cell_id = $item->{'Cell ID'};
+# process all map items in database
+while (my $row = $sth->fetch) {
+  my $name = $row->[3]; #{'Map Name'};
+  my $state = $row->[4]; #{'Primary State'};
+  my $cell_id = $row->[2]; #{'Cell ID'};
 
   msg("Processing map: $name, $state <$cell_id>", not $silent);
 
-  my $local_file = is_current($item);
-
-  if ($local_file) {
-    debug("Map is up to date: $local_file", $debug);
-  } else {
-    debug("Download required <$cell_id>", $debug);
-    $local_file = download_item($item);
-  }
+#  my $local_file = is_current($item);
+#
+#  if ($local_file) {
+#    debug("Map is up to date: $local_file", $debug);
+#  } else {
+#    debug("Download required <$cell_id>", $debug);
+#    $local_file = download_item($item);
+#  }
 }
+
+# TODO remove extra files in $datadir
 
 __END__
 
@@ -318,13 +314,7 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 
 =over
 
-=item Use ScienceBase API directly, rather than CSV catalog.
-
 =item Generate browseable HTML file offline of maps.
-
-=item Maintain local database of catalog for searching.
-
-=item Remove files from the data directory that are not in the catalog.
 
 =item Improve check for a current file using PDF metadata.
 
