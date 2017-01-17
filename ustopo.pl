@@ -118,12 +118,12 @@ sub get_local_path {
   my ($item) = @_;
 
   # sanitize the map name to get a file name
-  my $filename = $item->{'Map Name'};
+  my $filename = $item->{MapName};
   $filename =~ s/[^A-Za-z0-9_ -]/_/g;
   $filename .= '.pdf';
 
   # should be safe, but sanitize anyway
-  my $state = $item->{'Primary State'};
+  my $state = $item->{State};
   $state =~ s/[^A-Za-z0-9._-]/_/g;
 
   my $abs_datadir = File::Spec->rel2abs($datadir);
@@ -144,7 +144,7 @@ sub is_current {
 
   # make sure the size of the local file matches the published item
   my $pdf_len = -s $pdf_path;
-  my $item_len = $item->{'Byte Count'};
+  my $item_len = $item->{FileSize};
   debug("Local file size: $pdf_len bytes (expecting $item_len)", $debug);
   return undef unless ($pdf_len eq $item_len);
 
@@ -253,15 +253,15 @@ my $sth = $db->prepare(q{ SELECT * FROM maps; });
 $sth->execute();
 
 # process all map items in database
-while (my $row = $sth->fetch) {
-  my $name = $row->[3]; #{'Map Name'};
-  my $state = $row->[4]; #{'Primary State'};
-  my $cell_id = $row->[2]; #{'Cell ID'};
+while (my $row = $sth->fetchrow_hashref) {
+  my $name = $row->{MapName};
+  my $state = $row->{State};
+  my $cell_id = $row->{CID};
 
   msg("Processing map: $name, $state <$cell_id>", not $silent);
 
-#  my $local_file = is_current($item);
-#
+  my $local_file = is_current($row);
+
 #  if ($local_file) {
 #    debug("Map is up to date: $local_file", $debug);
 #  } else {
