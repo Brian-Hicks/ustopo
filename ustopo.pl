@@ -85,13 +85,13 @@ GetOptions(
   'silent|s' => \$opt_silent,
   'verbose|v' => \$opt_verbose,
   'agent=s' => \$opt_agent,
-  'help|?' => \$opt_help,
+  'help|?' => \$opt_help
 ) or usage(1);
 
 usage(0) if $opt_help;
 
-usage('Data directory is required',) unless defined $opt_datadir;
-usage("Directory not found: $opt_datadir",) unless -d $opt_datadir;
+usage('Data directory is required') unless defined $opt_datadir;
+usage("Directory not found: $opt_datadir") unless -d $opt_datadir;
 
 my $datadir = File::Spec->rel2abs($opt_datadir);
 
@@ -110,7 +110,7 @@ debug('User Agent: ' . $client->agent, $debug);
 my $db_file = File::Spec->join($datadir, 'index.db');
 
 debug("Connecting to database $db_file", $debug);
-my $db = DBI->connect("dbi:SQLite:dbname=$db_file", '', '');
+my $dbh = DBI->connect("dbi:SQLite:dbname=$db_file", undef, undef);
 
 ################################################################################
 # generate the full file path for a given record - the argument is a hashref
@@ -249,7 +249,7 @@ msg("Saving to directory: $datadir", not $silent);
 
 # TODO update the database from ScienceBase
 
-my $sth = $db->prepare(q{ SELECT * FROM maps; });
+my $sth = $dbh->prepare(q{ SELECT * FROM maps; });
 $sth->execute();
 
 # process all map items in database
