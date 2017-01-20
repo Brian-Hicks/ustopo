@@ -43,6 +43,8 @@ use Data::Dumper;
 
 =item B<--data=dir> : Directory location to save maps when downloading.
 
+=item B<--import=file> : Import the given catalog into the database.
+
 =item B<--agent=string> : Set the User Agent string for the download client.
 
 =item B<--verbose> : Display extra logging output for debugging.
@@ -79,9 +81,11 @@ my $opt_verbose = 0;
 my $opt_help = 0;
 my $opt_datadir = undef;
 my $opt_agent = undef;
+my $opt_import = undef;
 
 GetOptions(
   'datadir|D=s' => \$opt_datadir,
+  'import|C=s' => \$opt_import,
   'silent|s' => \$opt_silent,
   'verbose|v' => \$opt_verbose,
   'agent=s' => \$opt_agent,
@@ -136,7 +140,11 @@ sub get_local_path {
 sub is_current {
   my ($item) = @_;
 
-  my $pdf_path = get_local_path($item);
+  my $pdf_path = $item->{LocalFile};
+  unless (defined $pdf_path) {
+    debug("LocalFile not specified; using default location.", $debug);
+    $pdf_path = get_local_path($item);
+  }
 
   # first, make sure the file exists
   debug("Checking for local file: $pdf_path", $debug);
@@ -230,16 +238,45 @@ sub download_item {
   my $pdf_path = get_local_path($item);
 
   # download the zip file to a temp location
-  my $zipfile = fetch($item->{'Download GeoPDF'});
+  my $zipfile = fetch($item->{GeoPDF});
   croak 'download error' unless -s $zipfile;
 
   extract_to($zipfile, $pdf_path);
 
   # compare file size to published item size in catalog
-  croak 'size mismatch' unless (-s $pdf_path eq $item->{'Byte Count'});
+  croak 'size mismatch' unless (-s $pdf_path eq $item->{FileSize});
 
   unlink $zipfile or carp $!;
   return $pdf_path;
+}
+
+################################################################################
+sub update_local_file {
+  my ($item) = @_;
+
+  my $cell_id = $item->{CID};
+  my $local_file = is_current($item);
+
+  if ($local_file) {
+    debug("Map is up to date: $local_file", $debug);
+
+  } else {
+    debug("Download required <$cell_id>", $debug);
+    $local_file = download_item($item);
+  }
+
+  # $local_file should now be up to date
+  $dbh->do('UPDATE maps SET `LocalFile`=? WHERE `ItemID`=?;', undef, $local_file, $item->{ItemID});
+}
+
+################################################################################
+sub update_metadata {
+  my ($item) = @_;
+
+  # TODO update from local file - other metadata fields?
+
+  $dbh->do('UPDATE maps SET `FileSize`=? WHERE `ItemID`=?;', undef,
+           -s $item->{LocalFile}, $item->{ItemID});
 }
 
 ################################################################################
@@ -247,12 +284,15 @@ sub download_item {
 
 msg("Saving to directory: $datadir", not $silent);
 
-# TODO update the database from ScienceBase
+# TODO check errors on database commands
 
-my $sth = $dbh->prepare(q{ SELECT * FROM maps; });
-$sth->execute();
+# TODO update the database from ScienceBase
+# -- or -- import CSV if requested
 
 # process all map items in database
+my $sth = $dbh->prepare(q{ SELECT * FROM maps; }) or die;
+$sth->execute();
+
 while (my $row = $sth->fetchrow_hashref) {
   my $name = $row->{MapName};
   my $state = $row->{State};
@@ -260,14 +300,10 @@ while (my $row = $sth->fetchrow_hashref) {
 
   msg("Processing map: $name, $state <$cell_id>", not $silent);
 
-  my $local_file = is_current($row);
+  update_local_file($row);
+  update_metadata($row);
 
-#  if ($local_file) {
-#    debug("Map is up to date: $local_file", $debug);
-#  } else {
-#    debug("Download required <$cell_id>", $debug);
-#    $local_file = download_item($item);
-#  }
+  # XXX other database maintenance?
 }
 
 # TODO remove extra files in $datadir
@@ -288,13 +324,15 @@ These maps are also suitable for printing.  They contain multiple layers, includ
 lines, satellite imagery, road information & landmarks.  For best results, use an application
 such as Adobe Acrobat Reader that allows you to configure which layers are visible.
 
-In order to use B<ustopo.pl>, you will need to download the latest CSV catalog.  This catalog
-is updated regularly as a zip archive.  This script operates on the C<topomaps_all.csv> file
-in that archive.  It will only download current maps from the US Topo series.
-
-Download the latest catalog here: L<http://thor-f5.er.usgs.gov/ngtoc/metadata/misc/topomaps_all.zip>
+By default, C<ustopo.pl> will perform regular maintenance on the catalog.  This includes updating
+the catalog from ScienceBase, downloading new or modified items and deleted old or expired
+records.  Other operations may be explicitly called by passing the appropriate command line
+options.
 
 Browse the collection here: L<https://geonames.usgs.gov/pls/topomaps/>
+
+Download a CSV version of the catalog (suitable for importing) here:
+L<http://thor-f5.er.usgs.gov/ngtoc/metadata/misc/topomaps_all.zip>
 
 Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=categories/9797/3572>.
 
