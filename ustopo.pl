@@ -96,8 +96,8 @@ usage(0) if $opt_help;
 
 usage('Catalog is required') unless defined $opt_catalog;
 usage("File not found: $opt_catalog") unless -s $opt_catalog;
-usage('Data directory is required',) unless defined $opt_datadir;
-usage("Directory not found: $opt_datadir",) unless -d $opt_datadir;
+usage('Data directory is required') unless defined $opt_datadir;
+usage("Directory not found: $opt_datadir") unless -d $opt_datadir;
 
 my $catalog = File::Spec->rel2abs($opt_catalog);
 my $datadir = File::Spec->rel2abs($opt_datadir);
