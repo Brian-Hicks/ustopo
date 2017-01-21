@@ -313,11 +313,11 @@ sub update_local_file {
   my $local_file = is_current($item);
 
   if ($local_file) {
-    debug("Map is up to date: $local_file", $debug);
+    debug("Map is current: $local_file", $debug);
 
   } else {
     debug("Download required <$cell_id>", $debug);
-    $local_file = download_item($item)
+    $local_file = download_item($item);
   }
 
   db_update_item($item->{ItemID}, {
