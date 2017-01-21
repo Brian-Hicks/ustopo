@@ -47,6 +47,10 @@ use Data::Dumper;
 
 =item B<--agent=string> : Set the User Agent string for the download client.
 
+=item B<--update> : Update the local database (default behavior).
+
+=item B<--no-update> : Do not update local database (often used with --import).
+
 =item B<--verbose> : Display extra logging output for debugging.
 
 =item B<--silent> : Supress all logging output (overrides --verbose).
@@ -82,10 +86,12 @@ my $opt_help = 0;
 my $opt_datadir = undef;
 my $opt_agent = undef;
 my $opt_import = undef;
+my $opt_update = 1;
 
 GetOptions(
   'datadir|D=s' => \$opt_datadir,
   'import|C=s' => \$opt_import,
+  'update!' => \$opt_update,
   'silent|s' => \$opt_silent,
   'verbose|v' => \$opt_verbose,
   'agent=s' => \$opt_agent,
@@ -284,34 +290,45 @@ sub update_metadata {
 }
 
 ################################################################################
+sub update_database {
+}
+
+################################################################################
+sub import_csv {
+  my ($csv_file) = @_;
+}
+
+################################################################################
+sub db_maintenance {
+  # process all map items in database
+  my $sth = $dbh->prepare(q{ SELECT * FROM maps; }) or die;
+  $sth->execute();
+
+  while (my $row = $sth->fetchrow_hashref) {
+    my $name = $row->{MapName};
+    my $state = $row->{State};
+    my $cell_id = $row->{CID};
+
+    msg("Processing map: $name, $state <$cell_id>", not $silent);
+
+    $dbh->do('BEGIN TRANSACTION;');
+
+    update_local_file($row);
+    update_metadata($row);
+    # TODO thumbnail?
+
+    $dbh->do('COMMIT;');
+  }
+}
+
+################################################################################
 ## MAIN ENTRY
 
 msg("Saving to directory: $datadir", not $silent);
 
-# TODO check errors on database commands
-
-# TODO update the database from ScienceBase
-# -- or -- import CSV if requested
-
-# process all map items in database
-my $sth = $dbh->prepare(q{ SELECT * FROM maps; }) or die;
-$sth->execute();
-
-while (my $row = $sth->fetchrow_hashref) {
-  my $name = $row->{MapName};
-  my $state = $row->{State};
-  my $cell_id = $row->{CID};
-
-  msg("Processing map: $name, $state <$cell_id>", not $silent);
-
-  $dbh->do('BEGIN TRANSACTION;');
-
-  update_local_file($row);
-  update_metadata($row);
-  # TODO thumbnail?
-
-  $dbh->do('COMMIT;');
-}
+update_database() if $opt_update;
+import_csv($opt_import) if $opt_import;
+db_maintenance();
 
 # TODO remove extra files in $datadir
 
