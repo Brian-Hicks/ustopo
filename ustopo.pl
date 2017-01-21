@@ -277,6 +277,35 @@ sub download_item {
 }
 
 ################################################################################
+sub db_update_item {
+  my $item_id = shift;
+  my $params = shift;
+
+  # there is probably some very clever way to do this with
+  # map and join, but I'm not feeling very clever today
+
+  my (@names, @values);
+  foreach my $key ( keys %{ $params } ) {
+    push @names, $key . '=?';
+    push @values, $params->{$key};
+  }
+
+  # ItemID will be last in the placeholders
+  push @values, $item_id;
+
+  my $fields = join(', ', @names);
+  my $sql = "UPDATE maps SET $fields WHERE ItemID=?;";
+
+  # it would be nice just to print the expanded SQL statement...
+  debug($sql, $debug);
+  debug('(' . join(', ', @values) . ')', $debug);
+
+  return -1 if ($opt_dryrun);
+
+  return $dbh->do($sql, undef, @values);
+}
+
+################################################################################
 sub update_local_file {
   my ($item) = @_;
 
@@ -291,13 +320,10 @@ sub update_local_file {
     $local_file = download_item($item)
   }
 
-  return if $opt_dryrun;
-
-  my $file_size = ($local_file) ? -s $local_file : 0;
-
-  # $local_file should now be up to date
-  $dbh->do('UPDATE maps SET LocalFile=?, FileSize=? WHERE ItemID=?;', undef,
-           $local_file, $file_size, $item->{ItemID});
+  db_update_item($item->{ItemID}, {
+    LocalFile => $local_file,
+    FileSize => ($local_file) ? -s $local_file : 0,
+  });
 }
 
 ################################################################################
@@ -309,11 +335,14 @@ sub update_metadata {
 
 ################################################################################
 sub update_database {
+  # TODO load from ScienceBase
 }
 
 ################################################################################
 sub import_csv {
   my ($csv_file) = @_;
+
+  # TODO
 }
 
 ################################################################################
