@@ -45,7 +45,11 @@ use Data::Dumper;
 
 =item B<--data=dir> : Directory location to save maps when downloading.
 
+=item B<--mapname=string> : Specify the format string for map filenames.
+
 =item B<--agent=string> : Set the User Agent string for the download client.
+
+=item B<--dryrun> : Don't actually download or extract files.
 
 =item B<--verbose> : Display extra logging output for debugging.
 
@@ -79,13 +83,17 @@ sub usage {
 my $opt_silent = 0;
 my $opt_verbose = 0;
 my $opt_help = 0;
+my $opt_dryrun = 0;
 my $opt_catalog = undef;
 my $opt_datadir = undef;
 my $opt_agent = undef;
+my $opt_mapname = '{Primary State}/{Map Name}.pdf';
 
 GetOptions(
   'catalog|C=s' => \$opt_catalog,
   'datadir|D=s' => \$opt_datadir,
+  'mapname=s' => \$opt_mapname,
+  'dryrun|N' => \$opt_dryrun,
   'silent|s' => \$opt_silent,
   'verbose|v' => \$opt_verbose,
   'agent=s' => \$opt_agent,
@@ -99,11 +107,16 @@ usage("File not found: $opt_catalog") unless -s $opt_catalog;
 usage('Data directory is required') unless defined $opt_datadir;
 usage("Directory not found: $opt_datadir") unless -d $opt_datadir;
 
-my $catalog = File::Spec->rel2abs($opt_catalog);
-my $datadir = File::Spec->rel2abs($opt_datadir);
-
 my $silent = $opt_silent;
 my $debug = ($opt_verbose) && (not $opt_silent);
+
+my $datadir = File::Spec->rel2abs($opt_datadir);
+msg("Using data directory: $datadir", not $silent);
+
+my $catalog = File::Spec->rel2abs($opt_catalog);
+msg("Loading catalog: $catalog", not $silent);
+
+debug("Filename format: $opt_mapname", $debug);
 
 ################################################################################
 # configure the common client for download files
@@ -117,18 +130,19 @@ debug('User Agent: ' . $client->agent, $debug);
 sub get_local_path {
   my ($item) = @_;
 
-  # sanitize the map name to get a file name
-  my $filename = $item->{'Map Name'};
-  $filename =~ s/[^A-Za-z0-9_ -]/_/g;
-  $filename .= '.pdf';
+  my $filename = $opt_mapname;
+  while ($filename =~ m/{([^}]+)}/) {
+    my $field = $1;
 
-  # should be safe, but sanitize anyway
-  my $state = $item->{'Primary State'};
-  $state =~ s/[^A-Za-z0-9._-]/_/g;
+    my $value = $item->{$field};
+    $value =~ s/[^A-Za-z0-9_ -]/_/g;
+
+    $filename =~ s/{$field}/$value/g;
+  }
+  debug("Filename: $filename", $debug);
 
   my $abs_datadir = File::Spec->rel2abs($datadir);
-
-  File::Spec->join($abs_datadir, $state, $filename);
+  File::Spec->join($abs_datadir, $filename);
 }
 
 ################################################################################
@@ -245,9 +259,6 @@ sub download_item {
 ################################################################################
 ## MAIN ENTRY
 
-msg("Using data directory: $datadir", not $silent);
-msg("Loading catalog: $catalog", not $silent);
-
 my $csv = Parse::CSV->new(
   file => $catalog,
   names => 1,
@@ -272,7 +283,10 @@ while (my $item = $csv->fetch) {
     debug("Map is up to date: $local_file", $debug);
   } else {
     debug("Download required <$cell_id>", $debug);
-    $local_file = download_item($item);
+
+    unless ($opt_dryrun) {
+      $local_file = download_item($item)
+    }
   }
 }
 
@@ -295,6 +309,11 @@ such as Adobe Acrobat Reader that allows you to configure which layers are visib
 In order to use B<ustopo.pl>, you will need to download the latest CSV catalog.  This catalog
 is updated regularly as a zip archive.  This script operates on the C<topomaps_all.csv> file
 in that archive.  It will only download current maps from the US Topo series.
+
+The C<--mapname> format string uses fields from the catalog as placeholders.  The default value
+is C<{Primary State}/{Map Name}.pdf> which will place the map in a subfolder by state.  Each
+placeholder is placed in braces and will be expanded for each map.  For additional fields, read
+the C<readme.txt> file included with the catalog.
 
 Download the latest catalog here: L<http://thor-f5.er.usgs.gov/ngtoc/metadata/misc/topomaps_all.zip>
 
@@ -328,13 +347,13 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 
 =item Improve check for a current file using PDF metadata.
 
+=item Insert GeoXML metadata into PDF XMP stream.
+
 =item Retry failed downloads (default to 3).
 
 =item Specify maximum number of maps to download per session (default to unlimited).
 
 =item Use a lock file.
-
-=item Support custom filename formats using catalog fields.
 
 =back
 
