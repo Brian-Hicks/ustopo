@@ -151,8 +151,10 @@ sub is_current {
   return undef unless -f $pdf_path;
 
   # make sure the size of the local file matches the published item
-  my $pdf_len = -s $pdf_path;
   my $item_len = $item->{FileSize};
+  return undef unless ($item_len);
+
+  my $pdf_len = -s $pdf_path;
   debug("Local file size: $pdf_len bytes (expecting $item_len)", $debug);
   return undef unless ($pdf_len eq $item_len);
 
@@ -244,7 +246,9 @@ sub download_item {
   extract_to($zipfile, $pdf_path);
 
   # compare file size to published item size in catalog
-  croak 'size mismatch' unless (-s $pdf_path eq $item->{FileSize});
+  if ($item->{FileSize}) {
+    croak 'size mismatch' unless (-s $pdf_path eq $item->{FileSize});
+  }
 
   unlink $zipfile or carp $!;
   return $pdf_path;
@@ -266,17 +270,14 @@ sub update_local_file {
   }
 
   # $local_file should now be up to date
-  $dbh->do('UPDATE maps SET `LocalFile`=? WHERE `ItemID`=?;', undef, $local_file, $item->{ItemID});
+  $dbh->do('UPDATE maps SET LocalFile=? WHERE ItemID=?;', undef, $local_file, $item->{ItemID});
 }
 
 ################################################################################
 sub update_metadata {
   my ($item) = @_;
 
-  # TODO update from local file - other metadata fields?
-
-  $dbh->do('UPDATE maps SET `FileSize`=? WHERE `ItemID`=?;', undef,
-           -s $item->{LocalFile}, $item->{ItemID});
+  # TODO update from local file or geo_xml?
 }
 
 ################################################################################
@@ -300,10 +301,13 @@ while (my $row = $sth->fetchrow_hashref) {
 
   msg("Processing map: $name, $state <$cell_id>", not $silent);
 
+  $dbh->do('BEGIN TRANSACTION;');
+
   update_local_file($row);
   update_metadata($row);
+  # TODO thumbnail?
 
-  # XXX other database maintenance?
+  $dbh->do('COMMIT;');
 }
 
 # TODO remove extra files in $datadir
