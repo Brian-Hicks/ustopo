@@ -269,8 +269,11 @@ sub update_local_file {
     $local_file = download_item($item);
   }
 
+  my $file_size = ($local_file) ? -s $local_file : 0;
+
   # $local_file should now be up to date
-  $dbh->do('UPDATE maps SET LocalFile=? WHERE ItemID=?;', undef, $local_file, $item->{ItemID});
+  $dbh->do('UPDATE maps SET LocalFile=?, FileSize=? WHERE ItemID=?;', undef,
+           $local_file, $file_size, $item->{ItemID});
 }
 
 ################################################################################
