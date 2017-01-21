@@ -51,6 +51,12 @@ use Data::Dumper;
 
 =item B<--no-update> : Do not update local database (often used with --import).
 
+=item B<--mapname=string> : Specify the format string for map filenames.
+
+=item B<--agent=string> : Set the User Agent string for the download client.
+
+=item B<--dryrun> : Don't actually download or extract files.
+
 =item B<--verbose> : Display extra logging output for debugging.
 
 =item B<--silent> : Supress all logging output (overrides --verbose).
@@ -87,11 +93,15 @@ my $opt_datadir = undef;
 my $opt_agent = undef;
 my $opt_import = undef;
 my $opt_update = 1;
+my $opt_dryrun = 0;
+my $opt_mapname = '{State}/{MapName}.pdf';
 
 GetOptions(
   'datadir|D=s' => \$opt_datadir,
   'import|C=s' => \$opt_import,
   'update!' => \$opt_update,
+  'mapname=s' => \$opt_mapname,
+  'dryrun|N' => \$opt_dryrun,
   'silent|s' => \$opt_silent,
   'verbose|v' => \$opt_verbose,
   'agent=s' => \$opt_agent,
@@ -103,10 +113,13 @@ usage(0) if $opt_help;
 usage('Data directory is required') unless defined $opt_datadir;
 usage("Directory not found: $opt_datadir") unless -d $opt_datadir;
 
-my $datadir = File::Spec->rel2abs($opt_datadir);
-
 my $silent = $opt_silent;
 my $debug = ($opt_verbose) && (not $opt_silent);
+
+my $datadir = File::Spec->rel2abs($opt_datadir);
+msg("Using data directory: $datadir", not $silent);
+
+debug("Filename format: $opt_mapname", $debug);
 
 ################################################################################
 # configure the common client for download files
@@ -127,18 +140,19 @@ my $dbh = DBI->connect("dbi:SQLite:dbname=$db_file", undef, undef);
 sub get_local_path {
   my ($item) = @_;
 
-  # sanitize the map name to get a file name
-  my $filename = $item->{MapName};
-  $filename =~ s/[^A-Za-z0-9_ -]/_/g;
-  $filename .= '.pdf';
+  my $filename = $opt_mapname;
+  while ($filename =~ m/{([^}]+)}/) {
+    my $field = $1;
 
-  # should be safe, but sanitize anyway
-  my $state = $item->{State};
-  $state =~ s/[^A-Za-z0-9._-]/_/g;
+    my $value = $item->{$field};
+    $value =~ s/[^A-Za-z0-9_ -]/_/g;
+
+    $filename =~ s/{$field}/$value/g;
+  }
+  debug("Filename: $filename", $debug);
 
   my $abs_datadir = File::Spec->rel2abs($datadir);
-
-  File::Spec->join($abs_datadir, $state, $filename);
+  File::Spec->join($abs_datadir, $filename);
 }
 
 ################################################################################
@@ -241,6 +255,8 @@ sub fetch {
 ################################################################################
 # download a specific item and return the path to the local file
 sub download_item {
+  return if $opt_dryrun;
+
   my ($item) = @_;
 
   my $pdf_path = get_local_path($item);
@@ -272,8 +288,10 @@ sub update_local_file {
 
   } else {
     debug("Download required <$cell_id>", $debug);
-    $local_file = download_item($item);
+    $local_file = download_item($item)
   }
+
+  return if $opt_dryrun;
 
   my $file_size = ($local_file) ? -s $local_file : 0;
 
@@ -301,7 +319,7 @@ sub import_csv {
 ################################################################################
 sub db_maintenance {
   # process all map items in database
-  my $sth = $dbh->prepare(q{ SELECT * FROM maps; }) or die;
+  my $sth = $dbh->prepare('SELECT * FROM maps;') or die;
   $sth->execute();
 
   while (my $row = $sth->fetchrow_hashref) {
@@ -353,6 +371,13 @@ the catalog from ScienceBase, downloading new or modified items and deleted old 
 records.  Other operations may be explicitly called by passing the appropriate command line
 options.
 
+The C<--mapname> format string uses fields from the database as placeholders.  The default value
+is C<{State}/{MapName}.pdf> which will place the map in a subfolder by state.  Each placeholder
+is placed in braces and will be expanded for each map.  For additional fields, see the database
+schema for column names.
+
+Download the latest catalog here: L<http://thor-f5.er.usgs.gov/ngtoc/metadata/misc/topomaps_all.zip>
+
 Browse the collection here: L<https://geonames.usgs.gov/pls/topomaps/>
 
 Download a CSV version of the catalog (suitable for importing) here:
@@ -380,13 +405,13 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 
 =item Improve check for a current file using PDF metadata.
 
+=item Insert GeoXML metadata into PDF XMP stream.
+
 =item Retry failed downloads (default to 3).
 
 =item Specify maximum number of maps to download per session (default to unlimited).
 
 =item Use a lock file.
-
-=item Support custom filename formats using catalog fields.
 
 =back
 
