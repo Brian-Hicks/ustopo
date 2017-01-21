@@ -322,7 +322,7 @@ sub update_local_file {
 
   db_update_item($item->{ItemID}, {
     LocalFile => $local_file,
-    FileSize => ($local_file) ? -s $local_file : 0,
+    FileSize => ($local_file) ? -s $local_file : undef,
   });
 }
 
