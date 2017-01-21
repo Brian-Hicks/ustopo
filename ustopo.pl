@@ -117,7 +117,7 @@ my $silent = $opt_silent;
 my $debug = ($opt_verbose) && (not $opt_silent);
 
 my $datadir = File::Spec->rel2abs($opt_datadir);
-msg("Using data directory: $datadir", not $silent);
+msg("Saving to directory: $datadir", not $silent);
 
 debug("Filename format: $opt_mapname", $debug);
 
@@ -370,8 +370,6 @@ sub db_maintenance {
 
 ################################################################################
 ## MAIN ENTRY
-
-msg("Saving to directory: $datadir", not $silent);
 
 update_database() if $opt_update;
 import_csv($opt_import) if $opt_import;
