@@ -24,8 +24,10 @@ use File::Spec;
 use File::Path qw( mkpath );
 use File::Temp qw( tempfile );
 use File::Basename;
+use File::Find;
 
 use DBI;
+use DateTime;
 use LWP::UserAgent;
 use Archive::Zip qw( :ERROR_CODES );
 use Time::HiRes qw( gettimeofday tv_interval );
@@ -43,13 +45,7 @@ use Data::Dumper;
 
 =item B<--data=dir> : Directory location to save maps when downloading.
 
-=item B<--import=file> : Import the given catalog into the database.
-
 =item B<--agent=string> : Set the User Agent string for the download client.
-
-=item B<--update> : Update the local database (default behavior).
-
-=item B<--no-update> : Do not update local database (often used with --import).
 
 =item B<--mapname=string> : Specify the format string for map filenames.
 
@@ -91,15 +87,11 @@ my $opt_verbose = 0;
 my $opt_help = 0;
 my $opt_datadir = undef;
 my $opt_agent = undef;
-my $opt_import = undef;
-my $opt_update = 1;
 my $opt_dryrun = 0;
 my $opt_mapname = '{State}/{MapName}.pdf';
 
 GetOptions(
   'datadir|D=s' => \$opt_datadir,
-  'import|C=s' => \$opt_import,
-  'update!' => \$opt_update,
   'mapname=s' => \$opt_mapname,
   'dryrun|N' => \$opt_dryrun,
   'silent|s' => \$opt_silent,
@@ -128,12 +120,57 @@ my $client = LWP::UserAgent->new;
 defined $opt_agent and $client->agent($opt_agent);
 debug('User Agent: ' . $client->agent, $debug);
 
-################################################################################
 # initialize the database connection
 my $db_file = File::Spec->join($datadir, 'index.db');
 
 debug("Connecting to database $db_file", $debug);
 my $dbh = DBI->connect("dbi:SQLite:dbname=$db_file", undef, undef);
+
+################################################################################
+sub db_schema_version_1 {
+  debug('Applying schema version 1 - initial maps table', $debug);
+
+  $dbh->do(qq{
+    CREATE TABLE "maps" (
+      `CID` INTEGER NOT NULL,
+      `MapName` TEXT NOT NULL,
+      `MapYear` INTEGER,
+      `State` TEXT NOT NULL,
+      `GeoPDF_URL` TEXT NOT NULL,
+      `ItemID` INTEGER NOT NULL UNIQUE,
+      `FileSize` INTEGER,
+      `LocalFile` TEXT UNIQUE
+    );
+  });
+
+  db_pragma('user_version', 1);
+}
+
+
+################################################################################
+sub db_schema_version_2 {
+  debug('Applying schema version 2 - update triggers', $debug);
+
+  $dbh->do('ALTER TABLE maps ADD COLUMN CreatedOn TEXT;');
+
+  $dbh->do(qq{
+    CREATE TRIGGER created_on INSERT ON maps
+    BEGIN
+      UPDATE maps SET CreatedOn=CURRENT_TIMESTAMP WHERE ItemID=old.ItemID;
+    END;
+  });
+
+  $dbh->do('ALTER TABLE maps ADD COLUMN LastUpdated TEXT;');
+
+  $dbh->do(qq{
+    CREATE TRIGGER last_updated UPDATE ON maps
+    BEGIN
+      UPDATE maps SET LastUpdated=CURRENT_TIMESTAMP WHERE ItemID=old.ItemID;
+    END;
+  });
+
+  db_pragma('user_version', 2);
+}
 
 ################################################################################
 # generate the full file path for a given record - the argument is a hashref
@@ -262,7 +299,7 @@ sub download_item {
   my $pdf_path = get_local_path($item);
 
   # download the zip file to a temp location
-  my $zipfile = fetch($item->{GeoPDF});
+  my $zipfile = fetch($item->{GeoPDF_URL});
   croak 'download error' unless -s $zipfile;
 
   extract_to($zipfile, $pdf_path);
@@ -274,6 +311,31 @@ sub download_item {
 
   unlink $zipfile or carp $!;
   return $pdf_path;
+}
+
+################################################################################
+sub db_transaction {
+  my $func = shift;
+
+  $dbh->do('BEGIN TRANSACTION;');
+  $func->();
+  $dbh->do('COMMIT;');
+}
+
+################################################################################
+sub db_pragma {
+  my $pragma = shift;
+  my $value = shift;
+
+  if (defined $value) {
+    $dbh->do("PRAGMA $pragma=$value;");
+  } else {
+    my $sth = $dbh->prepare("PRAGMA $pragma;");
+    $sth->execute();
+    $value = ($sth->fetchrow_array())[0];
+  }
+
+  $value;
 }
 
 ################################################################################
@@ -333,47 +395,37 @@ sub update_metadata {
   # TODO update from local file or geo_xml?
 }
 
-################################################################################
-sub update_database {
-  # TODO load from ScienceBase
-}
-
-################################################################################
-sub import_csv {
-  my ($csv_file) = @_;
-
-  # TODO
-}
-
-################################################################################
-sub db_maintenance {
-  # process all map items in database
-  my $sth = $dbh->prepare('SELECT * FROM maps;') or die;
-  $sth->execute();
-
-  while (my $row = $sth->fetchrow_hashref) {
-    my $name = $row->{MapName};
-    my $state = $row->{State};
-    my $cell_id = $row->{CID};
-
-    msg("Processing map: $name, $state <$cell_id>", not $silent);
-
-    $dbh->do('BEGIN TRANSACTION;');
-
-    update_local_file($row);
-    update_metadata($row);
-    # TODO thumbnail?
-
-    $dbh->do('COMMIT;');
-  }
-}
 
 ################################################################################
 ## MAIN ENTRY
 
-update_database() if $opt_update;
-import_csv($opt_import) if $opt_import;
-db_maintenance();
+my $db_version = db_pragma('user_version');
+debug("Current database version: $db_version", $debug);
+
+db_transaction(\&db_schema_version_1) unless $db_version ge 1;
+db_transaction(\&db_schema_version_2) unless $db_version ge 2;
+
+die;
+
+# TODO load from ScienceBase - https://www.sciencebase.gov/catalog/item/4f554236e4b018de15819c85
+
+# process all map items in database
+my $sth = $dbh->prepare('SELECT * FROM maps;') or die;
+$sth->execute();
+
+while (my $row = $sth->fetchrow_hashref) {
+  my $name = $row->{MapName};
+  my $state = $row->{State};
+  my $cell_id = $row->{CID};
+
+  msg("Processing map: $name, $state <$cell_id>", not $silent);
+
+  db_transaction( sub {
+    update_local_file($row);
+    update_metadata($row);
+    # TODO thumbnail?
+  });
+}
 
 # TODO remove extra files in $datadir
 
@@ -406,9 +458,6 @@ schema for column names.
 Download the latest catalog here: L<http://thor-f5.er.usgs.gov/ngtoc/metadata/misc/topomaps_all.zip>
 
 Browse the collection here: L<https://geonames.usgs.gov/pls/topomaps/>
-
-Download a CSV version of the catalog (suitable for importing) here:
-L<http://thor-f5.er.usgs.gov/ngtoc/metadata/misc/topomaps_all.zip>
 
 Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=categories/9797/3572>.
 
