@@ -26,6 +26,7 @@ use File::Temp qw( tempfile );
 use File::Basename;
 use File::Find;
 
+use JSON;
 use DBI;
 use DateTime;
 use LWP::UserAgent;
@@ -89,6 +90,7 @@ my $opt_datadir = undef;
 my $opt_agent = undef;
 my $opt_dryrun = 0;
 my $opt_mapname = '{State}/{MapName}.pdf';
+my $opt_sb_max_items = 10;
 
 GetOptions(
   'datadir|D=s' => \$opt_datadir,
@@ -112,6 +114,8 @@ my $datadir = File::Spec->rel2abs($opt_datadir);
 msg("Saving to directory: $datadir", not $silent);
 
 debug("Filename format: $opt_mapname", $debug);
+
+my $sb_catalog = "https://www.sciencebase.gov/catalog";
 
 ################################################################################
 # configure the common client for download files
@@ -211,8 +215,8 @@ sub extract_to {
 }
 
 ################################################################################
-# download a file and save it locally - NOTE file will be deleted on exit
-sub fetch {
+# download a file and return the decoded content
+sub fetch_data {
   my ($url) = @_;
 
   debug("Downloading: $url", $debug);
@@ -228,16 +232,28 @@ sub fetch {
     croak 'download error: ' . $resp->status_line;
   }
 
-  my $dl_length = length($resp->decoded_content);
+  my $data = $resp->decoded_content;
+
+  my $dl_length = length($data);
   my $mbps = ($dl_length / $elapsed) / (1024*1024);
   debug("Downloaded $dl_length bytes in $elapsed seconds ($mbps MB/s)", $debug);
 
+  return $data;
+}
+
+################################################################################
+# download a file and save it locally - NOTE file will be deleted on exit
+sub fetch_save {
+  my ($url) = @_;
+
+  my $data = fetch_data($url);
+
   # save the zipfile to a temporary file
-  my ($fh, $tmpfile) = tempfile('ustopo_plXXXX', TMPDIR => 1, UNLINK => 1);
+  my ($fh, $tmpfile) = tempfile('ustopo_XXXXXX', TMPDIR => 1, UNLINK => 1);
   debug("Saving download: $tmpfile", $debug);
 
   binmode $fh;
-  print $fh $resp->decoded_content;
+  print $fh $data;
   close $fh;
 
   return $tmpfile;
@@ -253,7 +269,7 @@ sub download_item {
   my $pdf_path = get_local_path($item);
 
   # download the zip file to a temp location
-  my $zipfile = fetch($item->{GeoPDF_URL});
+  my $zipfile = fetch_save($item->{GeoPDF_URL});
   croak 'download error' unless -s $zipfile;
 
   extract_to($zipfile, $pdf_path);
@@ -265,6 +281,39 @@ sub download_item {
 
   unlink $zipfile or carp $!;
   return $pdf_path;
+}
+
+################################################################################
+# update the internal catalog from ScienceBase
+sub sb_update_catalog {
+  my $sb_ustopo_id = '4f554236e4b018de15819c85';
+
+  debug('Downloading ScienceBase catalog [1]', $debug);
+
+  my $json_raw = fetch_data("$sb_catalog/items?parentId=$sb_ustopo_id&max=$opt_sb_max_items&format=json");
+  my $json = decode_json($json_raw);
+
+  foreach my $item (@{ $json->{'items'}}) {
+    my $item_id = $item->{'id'};
+    debug("Processing catalog entry: $item_id", $debug);
+    sb_import_item($item_id);
+  }
+
+  # TODO follow nextlink and do it again...
+}
+
+################################################################################
+# update the internal catalog from ScienceBase
+sub sb_import_item {
+  my ($sbid) = @_;
+
+  my $json_raw = fetch_data("$sb_catalog/item/$sbid?format=json");
+  my $json = decode_json($json_raw);
+
+  debug('Importing item: ' . $json->{'title'}, $debug);
+print Dumper($json);
+
+die;
 }
 
 ################################################################################
@@ -425,13 +474,12 @@ sub update_metadata {
   # TODO update from local file or geo_xml?
 }
 
-
 ################################################################################
 ## MAIN ENTRY
 
 db_migrate();
 
-# TODO load from ScienceBase - https://www.sciencebase.gov/catalog/item/4f554236e4b018de15819c85
+sb_update_catalog();
 
 db_update_all();
 
@@ -463,11 +511,7 @@ is C<{State}/{MapName}.pdf> which will place the map in a subfolder by state.  E
 is placed in braces and will be expanded for each map.  For additional fields, see the database
 schema for column names.
 
-Download the latest catalog here: L<http://thor-f5.er.usgs.gov/ngtoc/metadata/misc/topomaps_all.zip>
-
-Browse the collection here: L<https://geonames.usgs.gov/pls/topomaps/>
-
-Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=categories/9797/3572>.
+Browse the collection here: L<https://www.sciencebase.gov/catalog/item/4f554236e4b018de15819c85>
 
 =head1 REQUIREMENTS
 
