@@ -127,52 +127,6 @@ debug("Connecting to database $db_file", $debug);
 my $dbh = DBI->connect("dbi:SQLite:dbname=$db_file", undef, undef);
 
 ################################################################################
-sub db_schema_version_1 {
-  debug('Applying schema version 1 - initial maps table', $debug);
-
-  $dbh->do(qq{
-    CREATE TABLE "maps" (
-      `CID` INTEGER NOT NULL,
-      `MapName` TEXT NOT NULL,
-      `MapYear` INTEGER,
-      `State` TEXT NOT NULL,
-      `GeoPDF_URL` TEXT NOT NULL,
-      `ItemID` INTEGER NOT NULL UNIQUE,
-      `FileSize` INTEGER,
-      `LocalFile` TEXT UNIQUE
-    );
-  });
-
-  db_pragma('user_version', 1);
-}
-
-
-################################################################################
-sub db_schema_version_2 {
-  debug('Applying schema version 2 - update triggers', $debug);
-
-  $dbh->do('ALTER TABLE maps ADD COLUMN CreatedOn TEXT;');
-
-  $dbh->do(qq{
-    CREATE TRIGGER created_on INSERT ON maps
-    BEGIN
-      UPDATE maps SET CreatedOn=CURRENT_TIMESTAMP WHERE ItemID=old.ItemID;
-    END;
-  });
-
-  $dbh->do('ALTER TABLE maps ADD COLUMN LastUpdated TEXT;');
-
-  $dbh->do(qq{
-    CREATE TRIGGER last_updated UPDATE ON maps
-    BEGIN
-      UPDATE maps SET LastUpdated=CURRENT_TIMESTAMP WHERE ItemID=old.ItemID;
-    END;
-  });
-
-  db_pragma('user_version', 2);
-}
-
-################################################################################
 # generate the full file path for a given record - the argument is a hashref
 sub get_local_path {
   my ($item) = @_;
@@ -314,11 +268,67 @@ sub download_item {
 }
 
 ################################################################################
+sub db_migrate {
+  my $db_version = db_pragma('user_version');
+  debug("Current database version: $db_version", $debug);
+
+  db_transaction(\&db_schema_version_1) unless $db_version ge 1;
+  db_transaction(\&db_schema_version_2) unless $db_version ge 2;
+}
+
+################################################################################
+sub db_schema_version_1 {
+  debug('Applying schema version 1 - initial maps table', $debug);
+
+  $dbh->do(qq{
+    CREATE TABLE "maps" (
+      `CID` INTEGER NOT NULL,
+      `MapName` TEXT NOT NULL,
+      `MapYear` INTEGER,
+      `State` TEXT NOT NULL,
+      `GeoPDF_URL` TEXT NOT NULL,
+      `ItemID` INTEGER NOT NULL UNIQUE,
+      `FileSize` INTEGER,
+      `LocalFile` TEXT UNIQUE
+    );
+  });
+
+  db_pragma('user_version', 1);
+}
+
+################################################################################
+sub db_schema_version_2 {
+  debug('Applying schema version 2 - update triggers', $debug);
+
+  $dbh->do('ALTER TABLE maps ADD COLUMN CreatedOn TEXT;');
+
+  $dbh->do(qq{
+    CREATE TRIGGER created_on INSERT ON maps
+    BEGIN
+      UPDATE maps SET CreatedOn=CURRENT_TIMESTAMP WHERE ItemID=old.ItemID;
+    END;
+  });
+
+  $dbh->do('ALTER TABLE maps ADD COLUMN LastUpdated TEXT;');
+
+  $dbh->do(qq{
+    CREATE TRIGGER last_updated UPDATE ON maps
+    BEGIN
+      UPDATE maps SET LastUpdated=CURRENT_TIMESTAMP WHERE ItemID=old.ItemID;
+    END;
+  });
+
+  db_pragma('user_version', 2);
+}
+
+################################################################################
 sub db_transaction {
   my $func = shift;
 
   $dbh->do('BEGIN TRANSACTION;');
+
   $func->();
+
   $dbh->do('COMMIT;');
 }
 
@@ -368,6 +378,26 @@ sub db_update_item {
 }
 
 ################################################################################
+sub db_update_all {
+  # process all map items in database
+  my $sth = $dbh->prepare('SELECT * FROM maps;') or die;
+  $sth->execute();
+
+  while (my $row = $sth->fetchrow_hashref) {
+    my $name = $row->{MapName};
+    my $state = $row->{State};
+    my $cell_id = $row->{CID};
+
+    msg("Processing map: $name, $state <$cell_id>", not $silent);
+
+    db_transaction(sub {
+      update_local_file($row);
+      update_metadata($row);
+    });
+  }
+}
+
+################################################################################
 sub update_local_file {
   my ($item) = @_;
 
@@ -399,33 +429,11 @@ sub update_metadata {
 ################################################################################
 ## MAIN ENTRY
 
-my $db_version = db_pragma('user_version');
-debug("Current database version: $db_version", $debug);
-
-db_transaction(\&db_schema_version_1) unless $db_version ge 1;
-db_transaction(\&db_schema_version_2) unless $db_version ge 2;
-
-die;
+db_migrate();
 
 # TODO load from ScienceBase - https://www.sciencebase.gov/catalog/item/4f554236e4b018de15819c85
 
-# process all map items in database
-my $sth = $dbh->prepare('SELECT * FROM maps;') or die;
-$sth->execute();
-
-while (my $row = $sth->fetchrow_hashref) {
-  my $name = $row->{MapName};
-  my $state = $row->{State};
-  my $cell_id = $row->{CID};
-
-  msg("Processing map: $name, $state <$cell_id>", not $silent);
-
-  db_transaction( sub {
-    update_local_file($row);
-    update_metadata($row);
-    # TODO thumbnail?
-  });
-}
+db_update_all();
 
 # TODO remove extra files in $datadir
 
