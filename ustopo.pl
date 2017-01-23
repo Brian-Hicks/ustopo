@@ -101,7 +101,7 @@ GetOptions(
   'silent|s' => \$opt_silent,
   'verbose|v' => \$opt_verbose,
   'agent=s' => \$opt_agent,
-  'help|?' => \$opt_help,
+  'help|?' => \$opt_help
 ) or usage(1);
 
 usage(0) if $opt_help;
@@ -115,7 +115,7 @@ my $silent = $opt_silent;
 my $debug = ($opt_verbose) && (not $opt_silent);
 
 my $datadir = File::Spec->rel2abs($opt_datadir);
-msg("Using data directory: $datadir", not $silent);
+msg("Saving to directory: $datadir", not $silent);
 
 my $catalog = File::Spec->rel2abs($opt_catalog);
 msg("Loading catalog: $catalog", not $silent);
@@ -224,7 +224,7 @@ sub fetch_data {
 
   my $data = $resp->decoded_content;
 
-  my $dl_length = length($resp->decoded_content);
+  my $dl_length = length($data);
   my $mbps = ($dl_length / $elapsed) / (1024*1024);
   debug("Downloaded $dl_length bytes in $elapsed seconds ($mbps MB/s)", $debug);
 
@@ -321,7 +321,7 @@ while (my $item = $csv->fetch) {
   my $local_file = is_current($item);
 
   if ($local_file) {
-    debug("Map is up to date: $local_file", $debug);
+    debug("Map is current: $local_file", $debug);
   } else {
     debug("Download required <$cell_id>", $debug);
     $local_file = download_item($item);
