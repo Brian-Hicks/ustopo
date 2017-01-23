@@ -180,15 +180,15 @@ sub extract_to {
 
   my $zip = Archive::Zip->new($zipfile);
   unless (defined $zip) {
-    warn('invalid archive file') and return;
+    error('invalid archive file', not $silent) and return;
   }
 
   # only process the first entry
   my @members = $zip->members;
   if (scalar(@members) == 0) {
-    warn('empty archive') and return;
+    error('empty archive', not $silent) and return;
   } elsif (scalar(@members) > 1) {
-    warn('unexpected entries in archive') and return;
+    error('unexpected entries in archive', not $silent) and return;
   }
 
   my $entry = $members[0];
@@ -198,7 +198,7 @@ sub extract_to {
   debug("Extracting: $name ($full_size bytes)", $debug);
 
   if ($entry->extractToFileNamed($tofile) != AZ_OK) {
-    warn('error writing file') and return;
+    error('error writing file', not $silent) and return;
   }
 
   debug("Wrote: $tofile", $debug);
@@ -282,7 +282,7 @@ sub try_download_item {
   # download the zip file to a temp location
   my $zipfile = fetch_save($item->{'Download GeoPDF'});
   unless (-s $zipfile) {
-    warn('download error') and return undef;
+    error('download error', not $silent) and return undef;
   }
 
   extract_to($zipfile, $pdf_path);
@@ -291,7 +291,7 @@ sub try_download_item {
   # compare file size to published item size in catalog
   unless (-s $pdf_path eq $item->{'Byte Count'}) {
     unlink $pdf_path or carp $!;
-    warn('download size mismatch') and return undef;
+    error('download size mismatch', not $silent) and return undef;
   }
 
   return $pdf_path;
