@@ -10,7 +10,10 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 
 - **--catalog=file** : CSV catalog file from the USGS.
 - **--data=dir** : Directory location to save maps when downloading.
+- **--mapname=string** : Specify the format string for map filenames.
+- **--retry=num** : Number of retries for failed downloads.
 - **--agent=string** : Set the User Agent string for the download client.
+- **--dryrun** : Don't actually download or extract files.
 - **--verbose** : Display extra logging output for debugging.
 - **--silent** : Supress all logging output (overrides --verbose).
 - **--help** : Print a brief help message and exit.
@@ -31,6 +34,11 @@ In order to use **ustopo.pl**, you will need to download the latest CSV catalog.
 is updated regularly as a zip archive.  This script operates on the `topomaps_all.csv` file
 in that archive.  It will only download current maps from the US Topo series.
 
+The `--mapname` format string uses fields from the catalog as placeholders.  The default value
+is `{Primary State}/{Map Name}.pdf` which will place the map in a subfolder by state.  Each
+placeholder is placed in braces and will be expanded for each map.  For additional fields, read
+the `readme.txt` file included with the catalog.
+
 Download the latest catalog here: [http://thor-f5.er.usgs.gov/ngtoc/metadata/misc/topomaps\_all.zip](http://thor-f5.er.usgs.gov/ngtoc/metadata/misc/topomaps_all.zip)
 
 Browse the collection here: [https://geonames.usgs.gov/pls/topomaps/](https://geonames.usgs.gov/pls/topomaps/)
@@ -46,11 +54,8 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 # TODO
 
 - Use ScienceBase API directly, rather than CSV catalog.
-- Generate browseable HTML file offline of maps.
 - Maintain local database of catalog for searching.
 - Remove files from the data directory that are not in the catalog.
 - Improve check for a current file using PDF metadata.
-- Retry failed downloads (default to 3).
 - Specify maximum number of maps to download per session (default to unlimited).
 - Use a lock file.
-- Support custom filename formats using catalog fields.
