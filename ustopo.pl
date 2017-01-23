@@ -139,10 +139,8 @@ sub get_local_path {
 
     $filename =~ s/{$field}/$value/g;
   }
-  debug("Filename: $filename", $debug);
 
-  my $abs_datadir = File::Spec->rel2abs($datadir);
-  File::Spec->join($abs_datadir, $filename);
+  File::Spec->join($datadir, $filename);
 }
 
 ################################################################################
@@ -178,16 +176,16 @@ sub extract_to {
   mkpath($dirname);
 
   my $zip = Archive::Zip->new($zipfile);
-  croak 'error loading archive' unless defined $zip;
+  unless (defined $zip) {
+    warn('error loading archive') and return;
+  }
 
   # only process the first entry
   my @members = $zip->members;
   if (scalar(@members) == 0) {
-    carp 'empty archive';
-    return;
+    warn('empty archive') and return;
   } elsif (scalar(@members) > 1) {
-    carp 'unexpected entries in archive';
-    return;
+    warn('unexpected entries in archive') and return;
   }
 
   my $entry = $members[0];
@@ -197,7 +195,7 @@ sub extract_to {
   debug("Extracting: $name ($full_size bytes)", $debug);
 
   if ($entry->extractToFileNamed($tofile) != AZ_OK) {
-    croak 'error writing file';
+    warn('error writing file') and return;
   }
 
   debug("Wrote: $tofile", $debug);
@@ -205,7 +203,7 @@ sub extract_to {
 
 ################################################################################
 # download a file and save it locally - NOTE file will be deleted on exit
-sub fetch {
+sub fetch_data {
   my ($url) = @_;
 
   debug("Downloading: $url", $debug);
@@ -221,16 +219,29 @@ sub fetch {
     croak 'download error: ' . $resp->status_line;
   }
 
+  my $data = $resp->decoded_content;
+
   my $dl_length = length($resp->decoded_content);
   my $mbps = ($dl_length / $elapsed) / (1024*1024);
   debug("Downloaded $dl_length bytes in $elapsed seconds ($mbps MB/s)", $debug);
 
-  # save the zipfile to a temporary file
+  return $data;
+}
+
+################################################################################
+# download a file and save it locally - NOTE file will be deleted on exit
+sub fetch_save {
+  my ($url) = @_;
+
+  my $data = fetch_data($url);
+
+  # save the full content to a temporary file
   my ($fh, $tmpfile) = tempfile('ustopo_plXXXX', TMPDIR => 1, UNLINK => 1);
   debug("Saving download: $tmpfile", $debug);
 
+  # assume that the content is binary
   binmode $fh;
-  print $fh $resp->decoded_content;
+  print $fh $data;
   close $fh;
 
   return $tmpfile;
@@ -239,20 +250,24 @@ sub fetch {
 ################################################################################
 # download a specific item and return the path to the local file
 sub download_item {
-  my ($item) = @_;
+  my $item = shift;
 
   my $pdf_path = get_local_path($item);
 
   # download the zip file to a temp location
-  my $zipfile = fetch($item->{'Download GeoPDF'});
-  croak 'download error' unless -s $zipfile;
+  my $zipfile = fetch_save($item->{'Download GeoPDF'});
+  unless (-s $zipfile) {
+    warn('download error') and return undef;
+  }
 
   extract_to($zipfile, $pdf_path);
+  unlink $zipfile or carp $!;
 
   # compare file size to published item size in catalog
-  croak 'size mismatch' unless (-s $pdf_path eq $item->{'Byte Count'});
+  unless (-s $pdf_path eq $item->{'Byte Count'}) {
+    warn('download size mismatch') and return undef;
+  }
 
-  unlink $zipfile or carp $!;
   return $pdf_path;
 }
 
