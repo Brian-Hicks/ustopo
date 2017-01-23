@@ -47,6 +47,8 @@ use Data::Dumper;
 
 =item B<--mapname=string> : Specify the format string for map filenames.
 
+=item B<--retry=num> : Number of retries for failed downloads.
+
 =item B<--agent=string> : Set the User Agent string for the download client.
 
 =item B<--dryrun> : Don't actually download or extract files.
@@ -84,6 +86,7 @@ my $opt_silent = 0;
 my $opt_verbose = 0;
 my $opt_help = 0;
 my $opt_dryrun = 0;
+my $opt_retry = 3;
 my $opt_catalog = undef;
 my $opt_datadir = undef;
 my $opt_agent = undef;
@@ -92,6 +95,7 @@ my $opt_mapname = '{Primary State}/{Map Name}.pdf';
 GetOptions(
   'catalog|C=s' => \$opt_catalog,
   'datadir|D=s' => \$opt_datadir,
+  'retry=i' => \$opt_retry,
   'mapname=s' => \$opt_mapname,
   'dryrun|N' => \$opt_dryrun,
   'silent|s' => \$opt_silent,
@@ -172,12 +176,11 @@ sub extract_to {
   debug("Loading archive: $zipfile", $debug);
 
   # make necessary directories
-  my $dirname = dirname($tofile);
-  mkpath($dirname);
+  mkpath(dirname($tofile));
 
   my $zip = Archive::Zip->new($zipfile);
   unless (defined $zip) {
-    warn('error loading archive') and return;
+    warn('invalid archive file') and return;
   }
 
   # only process the first entry
@@ -252,6 +255,28 @@ sub fetch_save {
 sub download_item {
   my $item = shift;
 
+  if ($opt_dryrun) {
+    return undef;
+  }
+
+  my $pdf_path = undef;
+  my $attempt = 1;
+
+  while (($attempt <= $opt_retry) && (not defined $pdf_path)) {
+    my $name = $item->{'Map Name'} . ', ' . $item->{'Primary State'};
+    debug("Downloading map item: $name [$attempt]", $debug);
+
+    $pdf_path = try_download_item($item);
+    $attempt++;
+  }
+
+  return $pdf_path;
+}
+
+################################################################################
+sub try_download_item {
+  my $item = shift;
+
   my $pdf_path = get_local_path($item);
 
   # download the zip file to a temp location
@@ -265,6 +290,7 @@ sub download_item {
 
   # compare file size to published item size in catalog
   unless (-s $pdf_path eq $item->{'Byte Count'}) {
+    unlink $pdf_path or carp $!;
     warn('download size mismatch') and return undef;
   }
 
@@ -298,10 +324,7 @@ while (my $item = $csv->fetch) {
     debug("Map is up to date: $local_file", $debug);
   } else {
     debug("Download required <$cell_id>", $debug);
-
-    unless ($opt_dryrun) {
-      $local_file = download_item($item)
-    }
+    $local_file = download_item($item);
   }
 }
 
@@ -354,17 +377,11 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 
 =item Use ScienceBase API directly, rather than CSV catalog.
 
-=item Generate browseable HTML file offline of maps.
-
 =item Maintain local database of catalog for searching.
 
 =item Remove files from the data directory that are not in the catalog.
 
 =item Improve check for a current file using PDF metadata.
-
-=item Insert GeoXML metadata into PDF XMP stream.
-
-=item Retry failed downloads (default to 3).
 
 =item Specify maximum number of maps to download per session (default to unlimited).
 
