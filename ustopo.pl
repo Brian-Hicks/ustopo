@@ -303,6 +303,7 @@ sub try_download_item {
 ################################################################################
 ## MAIN ENTRY
 
+debug("Parsing catalog file: $opt_catalog", $debug);
 my $csv = Parse::CSV->new(
   file => $catalog,
   names => 1,
@@ -313,7 +314,7 @@ my $csv = Parse::CSV->new(
   }
 );
 
-# run through the current items
+debug('Reading catalog.', $debug);
 while (my $item = $csv->fetch) {
   my $name = $item->{'Map Name'};
   my $state = $item->{'Primary State'};
@@ -334,6 +335,7 @@ while (my $item = $csv->fetch) {
     }
   }
 }
+debug('Finished reading catalog.', $debug);
 
 __END__
 
