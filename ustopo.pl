@@ -219,7 +219,8 @@ sub fetch_data {
 
   # TODO maybe better to go to the next file?  especially for 404...
   if ($resp->is_error) {
-    croak 'download error: ' . $resp->status_line;
+    error('download error: ' . $resp->status_line, not $silent);
+    return undef;
   }
 
   my $data = $resp->decoded_content;
@@ -236,11 +237,13 @@ sub fetch_data {
 sub fetch_save {
   my ($url) = @_;
 
-  my $data = fetch_data($url);
+  my $data = fetch_data($url) or return undef;
 
   # save the full content to a temporary file
   my ($fh, $tmpfile) = tempfile('ustopo_plXXXX', TMPDIR => 1, UNLINK => 1);
   debug("Saving download: $tmpfile", $debug);
+
+  # TODO error checking on I/O
 
   # assume that the content is binary
   binmode $fh;
@@ -325,6 +328,10 @@ while (my $item = $csv->fetch) {
   } else {
     debug("Download required <$cell_id>", $debug);
     $local_file = download_item($item);
+
+    unless ($local_file) {
+      error("Download failed for <$cell_id>", not $silent);
+    }
   }
 }
 
@@ -386,6 +393,8 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 =item Specify maximum number of maps to download per session (default to unlimited).
 
 =item Use a lock file.
+
+=item Mode to report catalog stats only (no download).
 
 =back
 
