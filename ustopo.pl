@@ -314,7 +314,7 @@ my $csv = Parse::CSV->new(
   }
 );
 
-debug('Reading catalog.', $debug);
+debug('Reading catalog...', $debug);
 while (my $item = $csv->fetch) {
   my $name = $item->{'Map Name'};
   my $state = $item->{'Primary State'};
