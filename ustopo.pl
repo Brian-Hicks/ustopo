@@ -50,6 +50,8 @@ use Data::Dumper;
 
 =item B<--mapname=string> : Specify the format string for map filenames.
 
+=item B<--retry=num> : Number of retries for failed downloads.
+
 =item B<--agent=string> : Set the User Agent string for the download client.
 
 =item B<--dryrun> : Don't actually download or extract files.
@@ -88,12 +90,14 @@ my $opt_verbose = 0;
 my $opt_help = 0;
 my $opt_datadir = undef;
 my $opt_agent = undef;
+my $opt_retry = 3;
 my $opt_dryrun = 0;
 my $opt_mapname = '{State}/{MapName}.pdf';
 my $opt_sb_max_items = 10;
 
 GetOptions(
   'datadir|D=s' => \$opt_datadir,
+  'retry=i' => \$opt_retry,
   'mapname=s' => \$opt_mapname,
   'dryrun|N' => \$opt_dryrun,
   'silent|s' => \$opt_silent,
@@ -144,10 +148,8 @@ sub get_local_path {
 
     $filename =~ s/{$field}/$value/g;
   }
-  debug("Filename: $filename", $debug);
 
-  my $abs_datadir = File::Spec->rel2abs($datadir);
-  File::Spec->join($abs_datadir, $filename);
+  File::Spec->join($datadir, $filename);
 }
 
 ################################################################################
@@ -185,20 +187,19 @@ sub extract_to {
   debug("Loading archive: $zipfile", $debug);
 
   # make necessary directories
-  my $dirname = dirname($tofile);
-  mkpath($dirname);
+  mkpath(dirname($tofile));
 
   my $zip = Archive::Zip->new($zipfile);
-  croak 'error loading archive' unless defined $zip;
+  unless (defined $zip) {
+    error('invalid archive file', not $silent) and return;
+  }
 
   # only process the first entry
   my @members = $zip->members;
   if (scalar(@members) == 0) {
-    carp 'empty archive';
-    return;
+    error('empty archive', not $silent) and return;
   } elsif (scalar(@members) > 1) {
-    carp 'unexpected entries in archive';
-    return;
+    error('unexpected entries in archive', not $silent) and return;
   }
 
   my $entry = $members[0];
@@ -208,14 +209,14 @@ sub extract_to {
   debug("Extracting: $name ($full_size bytes)", $debug);
 
   if ($entry->extractToFileNamed($tofile) != AZ_OK) {
-    croak 'error writing file';
+    error('error writing file', not $silent) and return;
   }
 
   debug("Wrote: $tofile", $debug);
 }
 
 ################################################################################
-# download a file and return the decoded content
+# download a file and save it locally - NOTE file will be deleted on exit
 sub fetch_data {
   my ($url) = @_;
 
@@ -229,7 +230,8 @@ sub fetch_data {
 
   # TODO maybe better to go to the next file?  especially for 404...
   if ($resp->is_error) {
-    croak 'download error: ' . $resp->status_line;
+    error('download error: ' . $resp->status_line, not $silent);
+    return undef;
   }
 
   my $data = $resp->decoded_content;
@@ -246,12 +248,15 @@ sub fetch_data {
 sub fetch_save {
   my ($url) = @_;
 
-  my $data = fetch_data($url);
+  my $data = fetch_data($url) or return undef;
 
-  # save the zipfile to a temporary file
-  my ($fh, $tmpfile) = tempfile('ustopo_XXXXXX', TMPDIR => 1, UNLINK => 1);
+  # save the full content to a temporary file
+  my ($fh, $tmpfile) = tempfile('ustopo_plXXXX', TMPDIR => 1, UNLINK => 1);
   debug("Saving download: $tmpfile", $debug);
 
+  # TODO error checking on I/O
+
+  # assume that the content is binary
   binmode $fh;
   print $fh $data;
   close $fh;
@@ -262,24 +267,49 @@ sub fetch_save {
 ################################################################################
 # download a specific item and return the path to the local file
 sub download_item {
-  return if $opt_dryrun;
+  my $item = shift;
 
-  my ($item) = @_;
+  if ($opt_dryrun) {
+    debug("Skipping download -- dryrun.", $debug);
+    return undef;
+  }
+
+  my $pdf_path = undef;
+  my $attempt = 1;
+
+  while (($attempt <= $opt_retry) && (not defined $pdf_path)) {
+    my $name = $item->{'Map Name'} . ', ' . $item->{'Primary State'};
+    debug("Downloading map item: $name [$attempt]", $debug);
+
+    $pdf_path = try_download_item($item);
+    $attempt++;
+  }
+
+  return $pdf_path;
+}
+
+################################################################################
+sub try_download_item {
+  my $item = shift;
 
   my $pdf_path = get_local_path($item);
 
   # download the zip file to a temp location
   my $zipfile = fetch_save($item->{GeoPDF_URL});
-  croak 'download error' unless -s $zipfile;
-
-  extract_to($zipfile, $pdf_path);
-
-  # compare file size to published item size in catalog
-  if ($item->{FileSize}) {
-    croak 'size mismatch' unless (-s $pdf_path eq $item->{FileSize});
+  unless (-s $zipfile) {
+    error('download error', not $silent) and return undef;
   }
 
+  extract_to($zipfile, $pdf_path);
   unlink $zipfile or carp $!;
+
+  # compare file size to published item size in catalog
+  unless (-s $pdf_path eq $item->{FileSize}) {
+    unlink $pdf_path or carp $!;
+    error('download size mismatch', not $silent);
+    return undef;
+  }
+
   return $pdf_path;
 }
 
@@ -455,10 +485,13 @@ sub update_local_file {
 
   if ($local_file) {
     debug("Map is current: $local_file", $debug);
-
   } else {
     debug("Download required <$cell_id>", $debug);
     $local_file = download_item($item);
+
+    unless ($local_file or $opt_dryrun) {
+      error("Download failed for <$cell_id>", not $silent);
+    }
   }
 
   db_update_item($item->{ItemID}, {
@@ -529,17 +562,15 @@ Browse the collection here: L<https://www.sciencebase.gov/catalog/item/4f554236e
 
 =over
 
-=item Generate browseable HTML file offline of maps.
+=item Remove files from the data directory that are not in the catalog.
 
 =item Improve check for a current file using PDF metadata.
-
-=item Insert GeoXML metadata into PDF XMP stream.
-
-=item Retry failed downloads (default to 3).
 
 =item Specify maximum number of maps to download per session (default to unlimited).
 
 =item Use a lock file.
+
+=item Mode to report catalog stats only (no download).
 
 =back
 
