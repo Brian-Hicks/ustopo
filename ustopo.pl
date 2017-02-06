@@ -259,6 +259,7 @@ sub download_item {
   my $item = shift;
 
   if ($opt_dryrun) {
+    debug("Skipping download -- dryrun.", $debug);
     return undef;
   }
 
@@ -294,7 +295,8 @@ sub try_download_item {
   # compare file size to published item size in catalog
   unless (-s $pdf_path eq $item->{'Byte Count'}) {
     unlink $pdf_path or carp $!;
-    error('download size mismatch', not $silent) and return undef;
+    error('download size mismatch', not $silent);
+    return undef;
   }
 
   return $pdf_path;
@@ -330,7 +332,7 @@ while (my $item = $csv->fetch) {
     debug("Download required <$cell_id>", $debug);
     $local_file = download_item($item);
 
-    unless ($local_file) {
+    unless ($local_file or $opt_dryrun) {
       error("Download failed for <$cell_id>", not $silent);
     }
   }
