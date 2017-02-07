@@ -177,41 +177,6 @@ sub is_current {
   return $pdf_path;
 }
 
-################################################################################
-# extract the first member of an archive to a specifc filename
-sub extract_to {
-  my ($zipfile, $tofile) = @_;
-
-  debug("Loading archive: $zipfile", $debug);
-
-  # make necessary directories
-  mkpath(dirname($tofile));
-
-  my $zip = Archive::Zip->new($zipfile);
-  unless (defined $zip) {
-    error('invalid archive file', not $silent) and return;
-  }
-
-  # only process the first entry
-  my @members = $zip->members;
-  if (scalar(@members) == 0) {
-    error('empty archive', not $silent) and return;
-  } elsif (scalar(@members) > 1) {
-    error('unexpected entries in archive', not $silent) and return;
-  }
-
-  my $entry = $members[0];
-
-  my $name = $entry->fileName;
-  my $full_size = $entry->uncompressedSize;
-  debug("Extracting: $name ($full_size bytes)", $debug);
-
-  if ($entry->extractToFileNamed($tofile) != AZ_OK) {
-    error('error writing file', not $silent) and return;
-  }
-
-  debug("Wrote: $tofile", $debug);
-}
 
 ################################################################################
 # download a file and save it locally - NOTE file will be deleted on exit
@@ -242,9 +207,12 @@ sub fetch_data {
 }
 
 ################################################################################
-# download a file and save it locally - NOTE file will be deleted on exit
+# download a file and save it locally, if no path is given, a temp file will be
+# created -- NOTE temp files will be deleted on exit
 sub fetch_save {
-  my ($url) = @_;
+  my ($url, $path) = @_;
+
+  # TODO mkpath(dirname($tofile));
 
   my $data = fetch_data($url) or return undef;
 
@@ -286,15 +254,7 @@ sub try_download_item {
   my $item = shift;
 
   my $pdf_path = get_local_path($item);
-
-  # download the zip file to a temp location
-  my $zipfile = fetch_save($item->{GeoPDF_URL});
-  unless (-s $zipfile) {
-    error('download error', not $silent) and return undef;
-  }
-
-  extract_to($zipfile, $pdf_path);
-  unlink $zipfile or carp $!;
+  fetch_save($item->{GeoPDF_URL}, $pdf_path);
 
   # compare file size to published item size in catalog
   unless (-s $pdf_path eq $item->{FileSize}) {
@@ -316,13 +276,20 @@ sub sb_update_catalog {
   my $json_raw = fetch_data("$sb_catalog/items?parentId=$sb_ustopo_id&max=$opt_sb_max_items&format=json");
   my $json = decode_json($json_raw);
 
-  foreach my $item (@{ $json->{'items'}}) {
+  sb_process_items($json);
+
+  # TODO follow nextlink and do it again...
+}
+
+################################################################################
+sub sb_process_items {
+  my ($json) = @_;
+
+  foreach my $item (@{ $json->{'items'} }) {
     my $sbid = $item->{'id'};
     debug("Processing catalog entry: $sbid", $debug);
     sb_import_item($sbid);
   }
-
-  # TODO follow nextlink and do it again...
 }
 
 ################################################################################
@@ -333,7 +300,21 @@ sub sb_import_item {
   my $json_raw = fetch_data("$sb_catalog/item/$sbid?format=json");
   my $json = decode_json($json_raw);
 
-  # TODO assert download sbid == requested sbid
+  # assert download sbid == requested sbid
+  unless($sbid eq $json->{id}) {
+    error('Unexpected item in download: ' . $json->{id});
+    return undef;
+  }
+
+  sb_process_item($json);
+}
+
+################################################################################
+# update the internal catalog from ScienceBase
+sub sb_process_item {
+  my ($json) = @_;
+
+  my $sbid = $json->{id};
 
   my $title = $json->{title};
   msg("Processing map: $title", not $silent);
@@ -343,16 +324,30 @@ sub sb_import_item {
   my ($name, $state, $year) = $title =~ m/^USGS US Topo.*for\s+(.+),\s+(..)\s+([0-9]+)$/;
   debug("Found map item: $name, $state [$year]", $debug);
 
-  my ($dl_group) = grep { $_->{type} eq 'download' } @{ $json->{webLinks} };
+  my ($dl_pdf) = grep { $_->{type} eq 'download' } @{ $json->{webLinks} };
 
-  my $pdf_link = $dl_group->{uri};
-  my $pdf_size = $dl_group->{length};
-  debug("Download link: $pdf_link [$pdf_size]", $debug);
+  my $pdf_link = $dl_pdf->{uri};
+  my $pdf_size = $dl_pdf->{length};
 
   # TODO fail unless we have all metadata
 
-  # TODO update or insert sbid
-die;
+  # if the item already exists, we need to verify the metadata
+  my $item = db_get_item($sbid);
+  if ($item) {
+
+    # TODO compare values
+
+  } else {
+    $item = db_insert_item($sbid, {
+        MapName => $name,
+        MapYear => $year,
+        State => $state,
+        GeoPDF_URL => $pdf_link,
+        FileSize => $pdf_size
+    });
+  }
+
+  return $item;
 }
 
 ################################################################################
@@ -361,7 +356,7 @@ sub db_migrate {
   debug("Current database version: $db_version", $debug);
 
   db_transaction(\&db_schema_version_1) unless $db_version ge 1;
-  db_transaction(\&db_schema_version_2) unless $db_version ge 2;
+  #db_transaction(\&db_schema_version_2) unless $db_version ge 2;
 }
 
 ################################################################################
@@ -388,16 +383,14 @@ sub db_schema_version_2 {
   debug('Applying schema version 2 - update triggers', $debug);
 
   $dbh->do('ALTER TABLE maps ADD COLUMN CreatedOn TEXT;');
+  $dbh->do('ALTER TABLE maps ADD COLUMN LastUpdated TEXT;');
 
   $dbh->do(qq{
     CREATE TRIGGER created_on INSERT ON maps
     BEGIN
-      UPDATE maps SET CreatedOn=CURRENT_TIMESTAMP WHERE SBID=old.SBID;
       UPDATE maps SET LastUpdated=CreatedOn WHERE SBID=old.SBID;
     END;
   });
-
-  $dbh->do('ALTER TABLE maps ADD COLUMN LastUpdated TEXT;');
 
   $dbh->do(qq{
     CREATE TRIGGER last_updated UPDATE ON maps
@@ -437,21 +430,60 @@ sub db_pragma {
 }
 
 ################################################################################
-sub db_update_item {
-  my $item_id = shift;
-  my $params = shift;
+sub db_get_item {
+  my $sbid = shift;
 
-  # there is probably some very clever way to do this with
-  # map and join, but I'm not feeling very clever today
+  my $sql = "SELECT * FROM maps WHERE SBID=? LIMIT 1;";
+  debug($sql, $debug);
 
-  my (@names, @values);
-  foreach my $key ( keys %{ $params } ) {
-    push @names, $key . '=?';
-    push @values, $params->{$key};
+  my $sth = $dbh->prepare($sql) or die;
+  $sth->execute($sbid);
+
+  my $item = $sth->fetchrow_hashref();
+
+  if ($item) {
+    debug('Found record: ' . $item->{SBID}, $debug);
+  } else {
+    debug("No records found.", $debug);
   }
 
+  return $item;
+}
+
+################################################################################
+sub db_insert_item {
+  my $sbid = shift;
+  my $params = shift;
+
+  my @names = keys %{ $params };
+  my @values = values %{ $params };
+
   # SBID will be last in the placeholders
-  push @values, $item_id;
+  push @names, 'SBID';
+  push @values, $sbid;
+
+  my $columns = join(', ', @names);
+  my $placeholders = join(', ', map { '?' } @values);
+
+  my $sql = "INSERT INTO maps ($columns) VALUES ($placeholders);";
+
+  debug($sql, $debug);
+  debug('(' . join(', ', @values) . ')', $debug);
+
+  my $sth = $dbh->prepare($sql) or die;
+  $sth->execute(@values);
+}
+
+################################################################################
+sub db_update_item {
+  my $sbid = shift;
+  my $params = shift;
+
+  my @names = map { "$_=?" } keys %{ $params };
+  my @values = values %{ $params };
+
+  # SBID will be last in the placeholders
+  push @values, $sbid;
 
   my $fields = join(', ', @names);
   my $sql = "UPDATE maps SET $fields WHERE SBID=?;";
@@ -469,7 +501,7 @@ sub db_update_all {
   my $sth = $dbh->prepare('SELECT * FROM maps;') or die;
   $sth->execute();
 
-  while (my $row = $sth->fetchrow_hashref) {
+  while (my $row = $sth->fetchrow_hashref()) {
     my $name = $row->{MapName};
     my $state = $row->{State};
     my $id = $row->{SBID};
