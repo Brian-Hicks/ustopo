@@ -91,7 +91,6 @@ my $opt_help = 0;
 my $opt_datadir = undef;
 my $opt_agent = undef;
 my $opt_retry = 3;
-my $opt_dryrun = 0;
 my $opt_mapname = '{State}/{MapName}.pdf';
 my $opt_sb_max_items = 10;
 
@@ -99,7 +98,6 @@ GetOptions(
   'datadir|D=s' => \$opt_datadir,
   'retry=i' => \$opt_retry,
   'mapname=s' => \$opt_mapname,
-  'dryrun|N' => \$opt_dryrun,
   'silent|s' => \$opt_silent,
   'verbose|v' => \$opt_verbose,
   'agent=s' => \$opt_agent,
@@ -157,9 +155,9 @@ sub get_local_path {
 sub is_current {
   my ($item) = @_;
 
-  my $pdf_path = $item->{LocalFile};
+  my $pdf_path = $item->{LocalFilePath};
   unless (defined $pdf_path) {
-    debug("LocalFile not specified; using default location.", $debug);
+    debug("LocalFilePath not specified; using default location.", $debug);
     $pdf_path = get_local_path($item);
   }
 
@@ -269,11 +267,6 @@ sub fetch_save {
 sub download_item {
   my $item = shift;
 
-  if ($opt_dryrun) {
-    debug("Skipping download -- dryrun.", $debug);
-    return undef;
-  }
-
   my $pdf_path = undef;
   my $attempt = 1;
 
@@ -324,9 +317,9 @@ sub sb_update_catalog {
   my $json = decode_json($json_raw);
 
   foreach my $item (@{ $json->{'items'}}) {
-    my $item_id = $item->{'id'};
-    debug("Processing catalog entry: $item_id", $debug);
-    sb_import_item($item_id);
+    my $sbid = $item->{'id'};
+    debug("Processing catalog entry: $sbid", $debug);
+    sb_import_item($sbid);
   }
 
   # TODO follow nextlink and do it again...
@@ -340,9 +333,25 @@ sub sb_import_item {
   my $json_raw = fetch_data("$sb_catalog/item/$sbid?format=json");
   my $json = decode_json($json_raw);
 
-  debug('Importing item: ' . $json->{'title'}, $debug);
-print Dumper($json);
+  # TODO assert download sbid == requested sbid
 
+  my $title = $json->{title};
+  msg("Processing map: $title", not $silent);
+
+  # XXX the CSV catalog provides more robust metadata than ScienceBase
+  # this is a bit of a hack, but the only way to get the info we need...
+  my ($name, $state, $year) = $title =~ m/^USGS US Topo.*for\s+(.+),\s+(..)\s+([0-9]+)$/;
+  debug("Found map item: $name, $state [$year]", $debug);
+
+  my ($dl_group) = grep { $_->{type} eq 'download' } @{ $json->{webLinks} };
+
+  my $pdf_link = $dl_group->{uri};
+  my $pdf_size = $dl_group->{length};
+  debug("Download link: $pdf_link [$pdf_size]", $debug);
+
+  # TODO fail unless we have all metadata
+
+  # TODO update or insert sbid
 die;
 }
 
@@ -361,14 +370,13 @@ sub db_schema_version_1 {
 
   $dbh->do(qq{
     CREATE TABLE "maps" (
-      `CID` INTEGER NOT NULL,
+      `SBID` INTEGER NOT NULL UNIQUE,
       `MapName` TEXT NOT NULL,
       `MapYear` INTEGER,
       `State` TEXT NOT NULL,
       `GeoPDF_URL` TEXT NOT NULL,
-      `ItemID` INTEGER NOT NULL UNIQUE,
       `FileSize` INTEGER,
-      `LocalFile` TEXT UNIQUE
+      `LocalFilePath` TEXT UNIQUE
     );
   });
 
@@ -384,7 +392,8 @@ sub db_schema_version_2 {
   $dbh->do(qq{
     CREATE TRIGGER created_on INSERT ON maps
     BEGIN
-      UPDATE maps SET CreatedOn=CURRENT_TIMESTAMP WHERE ItemID=old.ItemID;
+      UPDATE maps SET CreatedOn=CURRENT_TIMESTAMP WHERE SBID=old.SBID;
+      UPDATE maps SET LastUpdated=CreatedOn WHERE SBID=old.SBID;
     END;
   });
 
@@ -393,7 +402,7 @@ sub db_schema_version_2 {
   $dbh->do(qq{
     CREATE TRIGGER last_updated UPDATE ON maps
     BEGIN
-      UPDATE maps SET LastUpdated=CURRENT_TIMESTAMP WHERE ItemID=old.ItemID;
+      UPDATE maps SET LastUpdated=CURRENT_TIMESTAMP WHERE SBID=old.SBID;
     END;
   });
 
@@ -441,17 +450,15 @@ sub db_update_item {
     push @values, $params->{$key};
   }
 
-  # ItemID will be last in the placeholders
+  # SBID will be last in the placeholders
   push @values, $item_id;
 
   my $fields = join(', ', @names);
-  my $sql = "UPDATE maps SET $fields WHERE ItemID=?;";
+  my $sql = "UPDATE maps SET $fields WHERE SBID=?;";
 
   # it would be nice just to print the expanded SQL statement...
   debug($sql, $debug);
   debug('(' . join(', ', @values) . ')', $debug);
-
-  return -1 if ($opt_dryrun);
 
   return $dbh->do($sql, undef, @values);
 }
@@ -465,9 +472,9 @@ sub db_update_all {
   while (my $row = $sth->fetchrow_hashref) {
     my $name = $row->{MapName};
     my $state = $row->{State};
-    my $cell_id = $row->{CID};
+    my $id = $row->{SBID};
 
-    msg("Processing map: $name, $state <$cell_id>", not $silent);
+    msg("Processing map: $name, $state <$id>", not $silent);
 
     db_transaction(sub {
       update_local_file($row);
@@ -480,22 +487,23 @@ sub db_update_all {
 sub update_local_file {
   my ($item) = @_;
 
-  my $cell_id = $item->{CID};
+  my $id = $item->{SBID};
   my $local_file = is_current($item);
 
   if ($local_file) {
     debug("Map is current: $local_file", $debug);
+
   } else {
-    debug("Download required <$cell_id>", $debug);
+    debug("Download required <$id>", $debug);
     $local_file = download_item($item);
 
-    unless ($local_file or $opt_dryrun) {
-      error("Download failed for <$cell_id>", not $silent);
+    unless ($local_file) {
+      error("Download failed for <$id>", not $silent);
     }
   }
 
-  db_update_item($item->{ItemID}, {
-    LocalFile => $local_file,
+  db_update_item($item->{SBID}, {
+    LocalFilePath => $local_file,
     FileSize => ($local_file) ? -s $local_file : undef,
   });
 }
