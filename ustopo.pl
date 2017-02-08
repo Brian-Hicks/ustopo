@@ -391,8 +391,6 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 
 =item Mode to report catalog stats (--stats).
 
-=item Option to skip downloading files (--no-download).
-
 =back
 
 =cut
