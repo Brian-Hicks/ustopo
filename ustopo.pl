@@ -644,15 +644,15 @@ Browse the collection here: L<https://www.sciencebase.gov/catalog/item/4f554236e
 
 =over
 
-=item Remove files from the data directory that are not in the catalog.
+=item Remove files from the data directory that are not in the catalog (--prune).
 
 =item Improve check for a current file using PDF metadata.
 
 =item Specify maximum number of maps to download per session (default to unlimited).
 
-=item Use a lock file.
+=item Use a PID file.
 
-=item Mode to report catalog stats only (no download).
+=item Mode to report catalog stats (--stats).
 
 =back
 
