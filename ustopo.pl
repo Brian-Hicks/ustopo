@@ -271,13 +271,14 @@ sub try_download_item {
 sub sb_update_catalog {
   my $sb_ustopo_id = '4f554236e4b018de15819c85';
 
-  debug('Downloading ScienceBase catalog [1]', $debug);
+  debug('Downloading ScienceBase catalog', $debug);
 
   my $json_raw = fetch_data("$sb_catalog/items?parentId=$sb_ustopo_id&max=$opt_sb_max_items&format=json");
   my $json = decode_json($json_raw);
 
   sb_process_items($json);
 
+  # TODO wrap updates in a transaction
   # TODO follow nextlink and do it again...
 }
 
@@ -285,11 +286,15 @@ sub sb_update_catalog {
 sub sb_process_items {
   my ($json) = @_;
 
+  my $item_count = 0;
+
   foreach my $item (@{ $json->{'items'} }) {
     my $sbid = $item->{'id'};
     debug("Processing catalog entry: $sbid", $debug);
-    sb_import_item($sbid);
+    sb_import_item($sbid) and $item_count++;
   }
+
+  return $item_count;
 }
 
 ################################################################################
@@ -320,16 +325,25 @@ sub sb_process_item {
   msg("Processing map: $title", not $silent);
 
   # XXX the CSV catalog provides more robust metadata than ScienceBase
-  # this is a bit of a hack, but the only way to get the info we need...
-  my ($name, $state, $year) = $title =~ m/^USGS US Topo.*for\s+(.+),\s+(..)\s+([0-9]+)$/;
+  # this is a bit of a hack, but the only way to get the info we want...
+  my ($name, $state) = $title =~ m/USGS US Topo.*for\s+(.+),\s+(..)/;
+
+  my ($date_grp) = grep { $_->{type} eq 'Publication' } @{ $json->{dates} };
+  my $pub_date = $date_grp->{dateString};
+  my ($year) = $pub_date =~ m/([0-9]+)-([0-9]+)-([0-9]+)/;
+
+  my ($dl_grp) = grep { $_->{type} eq 'download' } @{ $json->{webLinks} };
+
+  my $pdf_link = $dl_grp->{uri};
+  my $pdf_size = $dl_grp->{length};
+
+  # fail unless we have all metadata
+  unless ($name and $state and $year and $pdf_link) {
+    error("Invalid metadata for item $sbid", not $silent);
+    return undef;
+  }
+
   debug("Found map item: $name, $state [$year]", $debug);
-
-  my ($dl_pdf) = grep { $_->{type} eq 'download' } @{ $json->{webLinks} };
-
-  my $pdf_link = $dl_pdf->{uri};
-  my $pdf_size = $dl_pdf->{length};
-
-  # TODO fail unless we have all metadata
 
   # if the item already exists, we need to verify the metadata
   my $item = db_get_item($sbid);
@@ -339,11 +353,12 @@ sub sb_process_item {
 
   } else {
     $item = db_insert_item($sbid, {
-        MapName => $name,
-        MapYear => $year,
-        State => $state,
-        GeoPDF_URL => $pdf_link,
-        FileSize => $pdf_size
+      MapName => $name,
+      MapYear => $year,
+      PubDate => $pub_date,
+      State => $state,
+      GeoPDF_URL => $pdf_link,
+      FileSize => $pdf_size
     });
   }
 
@@ -368,6 +383,7 @@ sub db_schema_version_1 {
       `SBID` INTEGER NOT NULL UNIQUE,
       `MapName` TEXT NOT NULL,
       `MapYear` INTEGER,
+      `PubDate` INTEGER,
       `State` TEXT NOT NULL,
       `GeoPDF_URL` TEXT NOT NULL,
       `FileSize` INTEGER,
@@ -434,7 +450,7 @@ sub db_get_item {
   my $sbid = shift;
 
   my $sql = "SELECT * FROM maps WHERE SBID=? LIMIT 1;";
-  debug($sql, $debug);
+  debug("> $sql", $debug);
 
   my $sth = $dbh->prepare($sql) or die;
   $sth->execute($sbid);
@@ -467,7 +483,7 @@ sub db_insert_item {
 
   my $sql = "INSERT INTO maps ($columns) VALUES ($placeholders);";
 
-  debug($sql, $debug);
+  debug("> $sql", $debug);
   debug('(' . join(', ', @values) . ')', $debug);
 
   my $sth = $dbh->prepare($sql) or die;
@@ -489,7 +505,7 @@ sub db_update_item {
   my $sql = "UPDATE maps SET $fields WHERE SBID=?;";
 
   # it would be nice just to print the expanded SQL statement...
-  debug($sql, $debug);
+  debug("> $sql", $debug);
   debug('(' . join(', ', @values) . ')', $debug);
 
   return $dbh->do($sql, undef, @values);
