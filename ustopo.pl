@@ -244,6 +244,16 @@ sub fetch_save {
 }
 
 ################################################################################
+sub fetch_json {
+  my $url = shift;
+
+  # TODO handle retries somewhere...
+  my $json_raw = fetch_data($url);
+
+  decode_json($json_raw);
+}
+
+################################################################################
 # download a specific item and return the path to the local file
 sub download_item {
   my $item = shift;
@@ -287,8 +297,7 @@ sub sb_update_catalog {
   debug('Downloading ScienceBase catalog', $debug);
 
   while ($url) {
-    my $json_raw = fetch_data($url);
-    my $json = decode_json($json_raw);
+    my $json = fetch_json($url);
 
     sb_process_items($json);
 
@@ -308,6 +317,12 @@ sub sb_process_items {
   foreach my $item (@{ $json->{'items'} }) {
     my $sbid = $item->{'id'};
     debug("Processing catalog entry: $sbid", $debug);
+
+    # we could check for an existing record and skip the import here...  that
+    # would require us to deal with new metadata and changing database schema
+    # to keep it simple, we always process every item; the disadvantage is that
+    # we start the downloads back at the beginning of the set every time
+
     sb_import_item($sbid) and $item_count++;
   }
 
@@ -319,8 +334,7 @@ sub sb_process_items {
 sub sb_import_item {
   my ($sbid) = @_;
 
-  my $json_raw = fetch_data("$sb_catalog/item/$sbid?format=json");
-  my $json = decode_json($json_raw);
+  my $json = fetch_json("$sb_catalog/item/$sbid?format=json");
 
   # assert download sbid == requested sbid
   unless($sbid eq $json->{id}) {
@@ -366,7 +380,7 @@ sub sb_process_item {
   my $item = db_get_item($sbid);
 
   if ($item) {
-    debug("Updating existing record.", $debug);
+    debug('Updating existing record.', $debug);
     $item = db_update_item($sbid, {
       Title => $title,
       MapName => $name,
@@ -378,7 +392,7 @@ sub sb_process_item {
     });
 
   } else {
-    debug("Inserting new record.", $debug);
+    debug('Inserting new record.', $debug);
     $item = db_insert_item($sbid, {
       Title => $title,
       MapName => $name,
@@ -430,7 +444,7 @@ sub db_schema_version_2 {
   $dbh->do('ALTER TABLE maps ADD COLUMN LastUpdated TEXT;');
 
   $dbh->do(qq{
-    CREATE TRIGGER created_on INSERT ON maps
+    CREATE TRIGGER created_on AFTER INSERT ON maps
     BEGIN
       UPDATE maps SET LastUpdated=CURRENT_TIMESTAMP WHERE SBID=new.SBID;
     END;
