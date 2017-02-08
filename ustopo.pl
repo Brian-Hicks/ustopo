@@ -93,13 +93,13 @@ my $opt_agent = undef;
 my $opt_mapname = '{Primary State}/{Map Name}.pdf';
 
 GetOptions(
-  'catalog|C=s' => \$opt_catalog,
-  'datadir|D=s' => \$opt_datadir,
+  'catalog=s' => \$opt_catalog,
+  'datadir=s' => \$opt_datadir,
   'retry=i' => \$opt_retry,
   'mapname=s' => \$opt_mapname,
-  'dryrun|N' => \$opt_dryrun,
-  'silent|s' => \$opt_silent,
-  'verbose|v' => \$opt_verbose,
+  'dryrun' => \$opt_dryrun,
+  'silent' => \$opt_silent,
+  'verbose' => \$opt_verbose,
   'agent=s' => \$opt_agent,
   'help|?' => \$opt_help
 ) or usage(1);
