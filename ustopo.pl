@@ -86,6 +86,7 @@ my $opt_help = 0;
 my $opt_retry = 3;
 my $opt_catalog = undef;
 my $opt_datadir = undef;
+my $opt_download = 1;
 my $opt_agent = undef;
 my $opt_mapname = '{Primary State}/{Map Name}.pdf';
 
@@ -94,6 +95,7 @@ GetOptions(
   'datadir=s' => \$opt_datadir,
   'retry=i' => \$opt_retry,
   'mapname=s' => \$opt_mapname,
+  'download!' => \$opt_download,
   'silent' => \$opt_silent,
   'verbose' => \$opt_verbose,
   'agent=s' => \$opt_agent,
@@ -319,7 +321,8 @@ while (my $item = $csv->fetch) {
 
   if ($local_file) {
     debug("Map is current: $local_file", $debug);
-  } else {
+
+  } elsif ($opt_download) {
     debug("Download required <$cell_id>", $debug);
     $local_file = download_item($item);
 
@@ -327,7 +330,10 @@ while (my $item = $csv->fetch) {
       error("Download failed for <$cell_id>", not $silent);
     }
   }
+
+  # TODO update stats
 }
+
 debug('Finished reading catalog.', $debug);
 
 __END__
