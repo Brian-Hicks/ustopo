@@ -26,8 +26,9 @@ use File::Temp qw( tempfile );
 use File::Basename;
 use File::Find;
 
-use JSON;
 use DBI;
+use JSON;
+
 use DateTime;
 use LWP::UserAgent;
 use Archive::Zip qw( :ERROR_CODES );
@@ -91,11 +92,15 @@ my $opt_agent = undef;
 my $opt_retry = 3;
 my $opt_mapname = '{State}/{MapName}.pdf';
 my $opt_sb_max_items = 10;
+my $opt_update = 1;
+my $opt_download = 1;
 
 GetOptions(
   'datadir=s' => \$opt_datadir,
   'retry=i' => \$opt_retry,
   'mapname=s' => \$opt_mapname,
+  'update!' => \$opt_update,
+  'download!' => \$opt_download,
   'silent' => \$opt_silent,
   'verbose' => \$opt_verbose,
   'agent=s' => \$opt_agent,
@@ -510,7 +515,7 @@ sub db_update_item {
 }
 
 ################################################################################
-sub db_update_all {
+sub db_download_all {
   # process all map items in database
   my $sth = $dbh->prepare('SELECT * FROM maps;') or die;
   $sth->execute();
@@ -565,10 +570,8 @@ sub update_metadata {
 ## MAIN ENTRY
 
 db_migrate();
-
-sb_update_catalog();
-
-db_update_all();
+sb_update_catalog() if $opt_update;
+db_download_all() if $opt_download;
 
 # TODO remove extra files in $datadir
 
