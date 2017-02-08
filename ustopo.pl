@@ -90,6 +90,7 @@ sub usage {
 
 ################################################################################
 # parse command line options
+
 my $opt_silent = 0;
 my $opt_verbose = 0;
 my $opt_help = 0;
@@ -97,7 +98,6 @@ my $opt_datadir = undef;
 my $opt_agent = undef;
 my $opt_retry = 3;
 my $opt_mapname = '{State}/{MapName}.pdf';
-my $opt_sb_max_items = 10;
 my $opt_update = 1;
 my $opt_download = 1;
 
@@ -126,7 +126,12 @@ msg("Saving to directory: $datadir", not $silent);
 
 debug("Filename format: $opt_mapname", $debug);
 
-my $sb_catalog = "https://www.sciencebase.gov/catalog";
+################################################################################
+# ScienceBase configuration
+
+my $sb_catalog = 'https://www.sciencebase.gov/catalog';
+my $sb_ustopo_id = '4f554236e4b018de15819c85';
+my $sb_max_items = 10;
 
 ################################################################################
 # configure the common client for download files
@@ -185,7 +190,6 @@ sub is_current {
   # all is well...
   return $pdf_path;
 }
-
 
 ################################################################################
 # download a file and save it locally - NOTE file will be deleted on exit
@@ -278,8 +282,7 @@ sub try_download_item {
 ################################################################################
 # update the internal catalog from ScienceBase
 sub sb_update_catalog {
-  my $sb_ustopo_id = '4f554236e4b018de15819c85';
-  my $url = "$sb_catalog/items?parentId=$sb_ustopo_id&max=$opt_sb_max_items&format=json";
+  my $url = "$sb_catalog/items?parentId=$sb_ustopo_id&max=$sb_max_items&format=json";
 
   debug('Downloading ScienceBase catalog', $debug);
 
