@@ -13,7 +13,6 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 - **--mapname=string** : Specify the format string for map filenames.
 - **--retry=num** : Number of retries for failed downloads.
 - **--agent=string** : Set the User Agent string for the download client.
-- **--dryrun** : Don't actually download or extract files.
 - **--verbose** : Display extra logging output for debugging.
 - **--silent** : Supress all logging output (overrides --verbose).
 - **--help** : Print a brief help message and exit.
@@ -53,9 +52,8 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 
 # TODO
 
-- Use ScienceBase API directly, rather than CSV catalog.
-- Maintain local database of catalog for searching.
-- Remove files from the data directory that are not in the catalog.
-- Improve check for a current file using PDF metadata.
+- Remove files from the data directory that are not in the catalog (--prune).
 - Specify maximum number of maps to download per session (default to unlimited).
-- Use a lock file.
+- Use a PID file.
+- Mode to report catalog stats (--stats).
+- Option to skip downloading files (--no-download).

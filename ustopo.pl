@@ -377,19 +377,15 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 
 =over
 
-=item Use ScienceBase API directly, rather than CSV catalog.
-
-=item Maintain local database of catalog for searching.
-
-=item Remove files from the data directory that are not in the catalog.
-
-=item Improve check for a current file using PDF metadata.
+=item Remove files from the data directory that are not in the catalog (--prune).
 
 =item Specify maximum number of maps to download per session (default to unlimited).
 
-=item Use a lock file.
+=item Use a PID file.
 
-=item Mode to report catalog stats only (no download).
+=item Mode to report catalog stats (--stats).
+
+=item Option to skip downloading files (--no-download).
 
 =back
 
