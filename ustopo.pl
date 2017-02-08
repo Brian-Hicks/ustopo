@@ -45,11 +45,15 @@ use Data::Dumper;
 
 =item B<--data=dir> : Directory location to save maps when downloading.
 
+=item B<--download> : Download new map items (default behavior).
+
+=item B<--no-download> : Do not download new map items.
+
 =item B<--mapname=string> : Specify the format string for map filenames.
 
-=item B<--retry=num> : Number of retries for failed downloads.
+=item B<--retry=num> : Number of retries for failed downloads (default=3).
 
-=item B<--agent=string> : Set the User Agent string for the download client.
+=item B<--agent=string> : Override the User Agent string for the download client.
 
 =item B<--verbose> : Display extra logging output for debugging.
 
@@ -299,6 +303,7 @@ sub try_download_item {
 ## MAIN ENTRY
 
 debug("Parsing catalog file: $opt_catalog", $debug);
+
 my $csv = Parse::CSV->new(
   file => $catalog,
   names => 1,
@@ -310,6 +315,7 @@ my $csv = Parse::CSV->new(
 );
 
 debug('Reading catalog...', $debug);
+
 while (my $item = $csv->fetch) {
   my $name = $item->{'Map Name'};
   my $state = $item->{'Primary State'};
