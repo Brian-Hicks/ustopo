@@ -273,16 +273,21 @@ sub try_download_item {
 # update the internal catalog from ScienceBase
 sub sb_update_catalog {
   my $sb_ustopo_id = '4f554236e4b018de15819c85';
+  my $url = "$sb_catalog/items?parentId=$sb_ustopo_id&max=$opt_sb_max_items&format=json";
 
   debug('Downloading ScienceBase catalog', $debug);
 
-  my $json_raw = fetch_data("$sb_catalog/items?parentId=$sb_ustopo_id&max=$opt_sb_max_items&format=json");
-  my $json = decode_json($json_raw);
+  while ($url) {
+    my $json_raw = fetch_data($url);
+    my $json = decode_json($json_raw);
 
-  sb_process_items($json);
+    sb_process_items($json);
+
+    my $nextlink = $json->{nextlink};
+    $url = ($nextlink) ? $nextlink->{url} : undef;
+  }
 
   # TODO wrap updates in a transaction
-  # TODO follow nextlink and do it again...
 }
 
 ################################################################################
@@ -341,7 +346,7 @@ sub sb_process_item {
   my $pdf_size = $dl_grp->{length};
 
   # fail unless we have all metadata
-  unless ($name and $state and $year and $pdf_link) {
+  unless ($name and $state and $year and $pub_date and $pdf_link) {
     error("Invalid metadata for item $sbid", not $silent);
     return undef;
   }
@@ -385,9 +390,9 @@ sub db_schema_version_1 {
     CREATE TABLE "maps" (
       `SBID` INTEGER NOT NULL UNIQUE,
       `MapName` TEXT NOT NULL,
-      `MapYear` INTEGER,
-      `PubDate` INTEGER,
       `State` TEXT NOT NULL,
+      `PubDate` INTEGER,
+      `MapYear` INTEGER,
       `GeoPDF_URL` TEXT NOT NULL,
       `FileSize` INTEGER,
       `LocalFilePath` TEXT UNIQUE
