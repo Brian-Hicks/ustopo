@@ -330,7 +330,7 @@ sub sb_process_item {
   my $sbid = $json->{id};
 
   my $title = $json->{title};
-  msg("Processing map: $title", not $silent);
+  msg("Processing: $title", not $silent);
 
   # XXX the CSV catalog provides more robust metadata than ScienceBase
   # this is a bit of a hack, but the only way to get the info we want...
@@ -351,20 +351,31 @@ sub sb_process_item {
     return undef;
   }
 
-  debug("Found map item: $name, $state [$year]", $debug);
+  debug("Parsed map item: $name, $state [$year]", $debug);
 
   # if the item already exists, we need to verify the metadata
   my $item = db_get_item($sbid);
+
   if ($item) {
-
-    # TODO compare values
-
-  } else {
-    $item = db_insert_item($sbid, {
+    debug("Updating existing record.", $debug);
+    $item = db_update_item($sbid, {
+      Title => $title,
       MapName => $name,
+      State => $state,
       MapYear => $year,
       PubDate => $pub_date,
+      GeoPDF_URL => $pdf_link,
+      FileSize => $pdf_size
+    });
+
+  } else {
+    debug("Inserting new record.", $debug);
+    $item = db_insert_item($sbid, {
+      Title => $title,
+      MapName => $name,
       State => $state,
+      MapYear => $year,
+      PubDate => $pub_date,
       GeoPDF_URL => $pdf_link,
       FileSize => $pdf_size
     });
@@ -379,7 +390,8 @@ sub db_migrate {
   debug("Current database version: $db_version", $debug);
 
   db_transaction(\&db_schema_version_1) unless $db_version ge 1;
-  #db_transaction(\&db_schema_version_2) unless $db_version ge 2;
+  db_transaction(\&db_schema_version_2) unless $db_version ge 2;
+  db_transaction(\&db_schema_version_3) unless $db_version ge 3;
 }
 
 ################################################################################
@@ -406,13 +418,12 @@ sub db_schema_version_1 {
 sub db_schema_version_2 {
   debug('Applying schema version 2 - update triggers', $debug);
 
-  $dbh->do('ALTER TABLE maps ADD COLUMN CreatedOn TEXT;');
   $dbh->do('ALTER TABLE maps ADD COLUMN LastUpdated TEXT;');
 
   $dbh->do(qq{
     CREATE TRIGGER created_on INSERT ON maps
     BEGIN
-      UPDATE maps SET LastUpdated=CreatedOn WHERE SBID=old.SBID;
+      UPDATE maps SET LastUpdated=CURRENT_TIMESTAMP WHERE SBID=new.SBID;
     END;
   });
 
@@ -424,6 +435,15 @@ sub db_schema_version_2 {
   });
 
   db_pragma('user_version', 2);
+}
+
+################################################################################
+sub db_schema_version_3 {
+  debug('Applying schema version 3 - `title` column', $debug);
+
+  $dbh->do('ALTER TABLE maps ADD COLUMN Title TEXT;');
+
+  db_pragma('user_version', 3);
 }
 
 ################################################################################
