@@ -47,6 +47,10 @@ use Data::Dumper;
 
 =item B<--data=dir> : Directory location to save maps when downloading.
 
+=item B<--update> : Update ScienceBase catalog (default behavior).
+
+=item B<--no-update> : Do not update ScienceBase catalog.
+
 =item B<--download> : Download new map items (default behavior).
 
 =item B<--no-download> : Do not download new map items.
@@ -648,13 +652,15 @@ Browse the collection here: L<https://www.sciencebase.gov/catalog/item/4f554236e
 
 =item Remove files from the data directory that are not in the catalog (--prune).
 
-=item Improve check for a current file using PDF metadata.
+=item Improve check for a current file using PDF metadata, checksum, etc.
 
 =item Specify maximum number of maps to download per session (default to unlimited).
 
 =item Use a PID file.
 
 =item Mode to report catalog stats (--stats).
+
+=item Store configuration options in database (e.g. mapname, user agent, etc).
 
 =back
 
