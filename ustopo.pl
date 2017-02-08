@@ -51,8 +51,6 @@ use Data::Dumper;
 
 =item B<--agent=string> : Set the User Agent string for the download client.
 
-=item B<--dryrun> : Don't actually download or extract files.
-
 =item B<--verbose> : Display extra logging output for debugging.
 
 =item B<--silent> : Supress all logging output (overrides --verbose).
@@ -85,7 +83,6 @@ sub usage {
 my $opt_silent = 0;
 my $opt_verbose = 0;
 my $opt_help = 0;
-my $opt_dryrun = 0;
 my $opt_retry = 3;
 my $opt_catalog = undef;
 my $opt_datadir = undef;
@@ -97,7 +94,6 @@ GetOptions(
   'datadir=s' => \$opt_datadir,
   'retry=i' => \$opt_retry,
   'mapname=s' => \$opt_mapname,
-  'dryrun' => \$opt_dryrun,
   'silent' => \$opt_silent,
   'verbose' => \$opt_verbose,
   'agent=s' => \$opt_agent,
@@ -258,11 +254,6 @@ sub fetch_save {
 sub download_item {
   my $item = shift;
 
-  if ($opt_dryrun) {
-    debug("Skipping download -- dryrun.", $debug);
-    return undef;
-  }
-
   my $pdf_path = undef;
   my $attempt = 1;
 
@@ -332,7 +323,7 @@ while (my $item = $csv->fetch) {
     debug("Download required <$cell_id>", $debug);
     $local_file = download_item($item);
 
-    unless ($local_file or $opt_dryrun) {
+    unless ($local_file) {
       error("Download failed for <$cell_id>", not $silent);
     }
   }
