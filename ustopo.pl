@@ -54,8 +54,6 @@ use Data::Dumper;
 
 =item B<--agent=string> : Set the User Agent string for the download client.
 
-=item B<--dryrun> : Don't actually download or extract files.
-
 =item B<--verbose> : Display extra logging output for debugging.
 
 =item B<--silent> : Supress all logging output (overrides --verbose).
@@ -95,11 +93,11 @@ my $opt_mapname = '{State}/{MapName}.pdf';
 my $opt_sb_max_items = 10;
 
 GetOptions(
-  'datadir|D=s' => \$opt_datadir,
+  'datadir=s' => \$opt_datadir,
   'retry=i' => \$opt_retry,
   'mapname=s' => \$opt_mapname,
-  'silent|s' => \$opt_silent,
-  'verbose|v' => \$opt_verbose,
+  'silent' => \$opt_silent,
+  'verbose' => \$opt_verbose,
   'agent=s' => \$opt_agent,
   'help|?' => \$opt_help
 ) or usage(1);
@@ -535,18 +533,18 @@ sub db_update_all {
 sub update_local_file {
   my ($item) = @_;
 
-  my $id = $item->{SBID};
+  my $sbid = $item->{SBID};
   my $local_file = is_current($item);
 
   if ($local_file) {
     debug("Map is current: $local_file", $debug);
 
   } else {
-    debug("Download required <$id>", $debug);
+    debug("Download required <$sbid>", $debug);
     $local_file = download_item($item);
 
     unless ($local_file) {
-      error("Download failed for <$id>", not $silent);
+      error("Download failed for <$sbid>", not $silent);
     }
   }
 
