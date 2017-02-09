@@ -193,15 +193,19 @@ sub extract_to {
 
   my $zip = Archive::Zip->new($zipfile);
   unless (defined $zip) {
-    error('invalid archive file', not $silent) and return;
+    error('invalid archive file', not $silent);
+    return;
   }
 
   # only process the first entry
   my @members = $zip->members;
+
   if (scalar(@members) == 0) {
-    error('empty archive', not $silent) and return;
+    error('empty archive', not $silent);
+    return;
   } elsif (scalar(@members) > 1) {
-    error('unexpected entries in archive', not $silent) and return;
+    error('unexpected entries in archive', not $silent);
+    return;
   }
 
   my $entry = $members[0];
@@ -211,7 +215,8 @@ sub extract_to {
   debug("Extracting: $name ($full_size bytes)", $debug);
 
   if ($entry->extractToFileNamed($tofile) != AZ_OK) {
-    error('error writing file', not $silent) and return;
+    error('error writing file', not $silent);
+    return;
   }
 
   debug("Wrote: $tofile", $debug);
@@ -301,7 +306,7 @@ sub try_download_item {
   extract_to($zipfile, $pdf_path);
   unlink $zipfile or carp $!;
 
-  # compare file size to published item size in catalog
+  # make sure the file exists after extracting
   unless (-f $pdf_path) {
     error('failed to extract map', not $silent);
     return undef;
