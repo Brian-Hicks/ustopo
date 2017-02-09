@@ -29,6 +29,7 @@ use File::Basename;
 use LWP::UserAgent;
 use Archive::Zip qw( :ERROR_CODES );
 use Time::HiRes qw( gettimeofday tv_interval );
+use Number::Bytes::Human qw( format_bytes );
 
 use Log::Message::Simple qw( :STD :CARP );
 use Data::Dumper;
@@ -91,6 +92,7 @@ my $opt_retry = 3;
 my $opt_catalog = undef;
 my $opt_datadir = undef;
 my $opt_download = 1;
+my $opt_stats = 1;
 my $opt_agent = undef;
 my $opt_mapname = '{Primary State}/{Map Name}.pdf';
 
@@ -100,6 +102,7 @@ GetOptions(
   'retry=i' => \$opt_retry,
   'mapname=s' => \$opt_mapname,
   'download!' => \$opt_download,
+  'stats!' => \$opt_stats,
   'silent' => \$opt_silent,
   'verbose' => \$opt_verbose,
   'agent=s' => \$opt_agent,
@@ -130,6 +133,15 @@ my $client = LWP::UserAgent->new;
 
 defined $opt_agent and $client->agent($opt_agent);
 debug('User Agent: ' . $client->agent, $debug);
+
+################################################################################
+# for tracking program stats
+
+my $stats_num_items = 0;
+my $stats_total_bytes = 0;
+my $stats_dl_count = 0;
+my $stats_dl_bytes = 0;
+my $stats_time_started = [gettimeofday];
 
 ################################################################################
 # generate the full file path for a given record - the argument is a hashref
@@ -228,8 +240,8 @@ sub fetch_data {
   my $data = $resp->decoded_content;
 
   my $dl_length = length($data);
-  my $mbps = ($dl_length / $elapsed) / (1024*1024);
-  debug("Downloaded $dl_length bytes in $elapsed seconds ($mbps MB/s)", $debug);
+  my $mbps = format_bytes($dl_length / $elapsed) . 'B/s';
+  debug("Downloaded $dl_length bytes in $elapsed seconds ($mbps)", $debug);
 
   return $data;
 }
@@ -282,15 +294,22 @@ sub try_download_item {
 
   # download the zip file to a temp location
   my $zipfile = fetch_save($item->{'Download GeoPDF'});
-  unless (-s $zipfile) {
-    error('download error', not $silent) and return undef;
+  unless (($zipfile) and (-s $zipfile)) {
+    error('download error', not $silent);
+    return undef;
   }
 
   extract_to($zipfile, $pdf_path);
   unlink $zipfile or carp $!;
 
   # compare file size to published item size in catalog
-  unless (-s $pdf_path eq $item->{'Byte Count'}) {
+  unless (-f $pdf_path) {
+    error('failed to extract map', not $silent);
+    return undef;
+  }
+
+  # compare file size to published item size in catalog
+  unless (-s $pdf_path == $item->{'Byte Count'}) {
     unlink $pdf_path or carp $!;
     error('download size mismatch', not $silent);
     return undef;
@@ -317,6 +336,9 @@ my $csv = Parse::CSV->new(
 debug('Reading catalog...', $debug);
 
 while (my $item = $csv->fetch) {
+  $stats_num_items++;
+  $stats_total_bytes += $item->{'Byte Count'};
+
   my $name = $item->{'Map Name'};
   my $state = $item->{'Primary State'};
   my $cell_id = $item->{'Cell ID'};
@@ -332,7 +354,10 @@ while (my $item = $csv->fetch) {
     debug("Download required <$cell_id>", $debug);
     $local_file = download_item($item);
 
-    unless ($local_file) {
+    if ($local_file) {
+      $stats_dl_count++;
+      $stats_dl_bytes += $item->{'Byte Count'};
+    } else {
       error("Download failed for <$cell_id>", not $silent);
     }
 
@@ -342,6 +367,13 @@ while (my $item = $csv->fetch) {
 }
 
 debug('Finished reading catalog.', $debug);
+
+if ($opt_stats and not $silent) {
+  printf("Total items in catalog: %d\n", $stats_num_items);
+  printf("Total size of all items: %d\n", format_bytes($stats_total_bytes));
+  printf("Downloaded items: %d\n", $stats_dl_count);
+  printf("Downloaded bytes: %d\n", format_bytes($stats_dl_bytes));
+}
 
 __END__
 
@@ -384,6 +416,8 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 
 =item B<Mozilla::CA> - recommended for HTTPS connections
 
+=item B<Number::Human::Bytes> - for displaying bytes in a meaningful way
+
 =back
 
 =head1 TODO
@@ -397,8 +431,6 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 =item Specify maximum number of maps to download per session (default to unlimited).
 
 =item Use a PID file.
-
-=item Mode to report catalog stats (--stats).
 
 =back
 
