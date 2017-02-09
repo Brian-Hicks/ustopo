@@ -225,22 +225,26 @@ sub fetch_data {
 sub fetch_save {
   my ($url, $path) = @_;
 
-  # TODO mkpath(dirname($tofile));
-
   my $data = fetch_data($url) or return undef;
 
-  # save the full content to a temporary file
-  my ($fh, $tmpfile) = tempfile('ustopo_plXXXX', TMPDIR => 1, UNLINK => 1);
-  debug("Saving download: $tmpfile", $debug);
+  my $fh = undef;
 
-  # TODO error checking on I/O
+  if ($path) {
+    mkpath(dirname($path));
+    open($fh, '>', $path) or croak $!;
+
+  } else {
+    ($fh, $path) = tempfile('ustopo_plXXXX', TMPDIR => 1, UNLINK => 1);
+  }
+
+  debug("Saving download: $path", $debug);
 
   # assume that the content is binary
   binmode $fh;
   print $fh $data;
   close $fh;
 
-  return $tmpfile;
+  return $path;
 }
 
 ################################################################################
