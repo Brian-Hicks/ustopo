@@ -29,7 +29,6 @@ use File::Basename;
 use LWP::UserAgent;
 use Archive::Zip qw( :ERROR_CODES );
 use Time::HiRes qw( gettimeofday tv_interval );
-use Number::Bytes::Human qw( format_bytes );
 
 use Log::Message::Simple qw( :STD :CARP );
 use Data::Dumper;
@@ -240,7 +239,7 @@ sub fetch_data {
   my $data = $resp->decoded_content;
 
   my $dl_length = length($data);
-  my $mbps = format_bytes($dl_length / $elapsed) . 'B/s';
+  my $mbps = human_bytes($dl_length / $elapsed) . '/s';
   debug("Downloaded $dl_length bytes in $elapsed seconds ($mbps)", $debug);
 
   return $data;
@@ -319,6 +318,23 @@ sub try_download_item {
 }
 
 ################################################################################
+sub human_bytes {
+  my $bytes = shift;
+
+  if ($bytes > 1099511627776) {
+      return sprintf("%.2f TB", $bytes / 1099511627776);
+  } elsif ($bytes > 1073741824) {
+      return sprintf("%.2f GB", $bytes / 1073741824);
+  } elsif ($bytes > 1048576) {
+      return sprintf("%.2f MB", $bytes / 1048576);
+  } elsif ($bytes > 1024) {
+      return sprintf("%.2f KB", $bytes / 1024);
+  }
+
+  return "$bytes B";
+}
+
+################################################################################
 ## MAIN ENTRY
 
 debug("Parsing catalog file: $opt_catalog", $debug);
@@ -370,9 +386,9 @@ debug('Finished reading catalog.', $debug);
 
 if ($opt_stats and not $silent) {
   printf("Total items in catalog: %d\n", $stats_num_items);
-  printf("Total size of all items: %d\n", format_bytes($stats_total_bytes));
+  printf("Total size of all items: %d\n", human_bytes($stats_total_bytes));
   printf("Downloaded items: %d\n", $stats_dl_count);
-  printf("Downloaded bytes: %d\n", format_bytes($stats_dl_bytes));
+  printf("Downloaded bytes: %d\n", human_bytes($stats_dl_bytes));
 }
 
 __END__
@@ -415,8 +431,6 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 =item B<Parse::CSV> - used to parse the catalog file
 
 =item B<Mozilla::CA> - recommended for HTTPS connections
-
-=item B<Number::Human::Bytes> - for displaying bytes in a meaningful way
 
 =back
 
