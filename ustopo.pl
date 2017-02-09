@@ -335,9 +335,10 @@ while (my $item = $csv->fetch) {
     unless ($local_file) {
       error("Download failed for <$cell_id>", not $silent);
     }
-  }
 
-  # TODO update stats
+  } else {
+    debug("Download skipped <$cell_id>", $debug);
+  }
 }
 
 debug('Finished reading catalog.', $debug);
