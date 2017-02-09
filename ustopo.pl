@@ -680,6 +680,8 @@ Browse the collection here: L<https://www.sciencebase.gov/catalog/item/4f554236e
 
 =over
 
+=item Save catalog to a local database for improved searching.
+
 =item Remove files from the data directory that are not in the catalog (--prune).
 
 =item Improve check for a current file using PDF metadata, checksum, etc.
