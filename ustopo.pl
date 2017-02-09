@@ -323,7 +323,7 @@ sub sb_process_items {
     debug("Processing catalog entry: $sbid", $debug);
 
     # we could check for an existing record and skip the import here...  that
-    # would require us to deal with new metadata and changing database schema
+    # would require us to deal with new metadata and changing database schema.
     # to keep it simple, we always process every item; the disadvantage is that
     # we start the downloads back at the beginning of the set every time
 
@@ -380,33 +380,15 @@ sub sb_process_item {
 
   debug("Parsed map item: $name, $state [$year]", $debug);
 
-  # if the item already exists, we need to verify the metadata
-  my $item = db_get_item($sbid);
-
-  if ($item) {
-    debug('Updating existing record.', $debug);
-    $item = db_update_item($sbid, {
-      Title => $title,
-      MapName => $name,
-      State => $state,
-      MapYear => $year,
-      PubDate => $pub_date,
-      GeoPDF_URL => $pdf_link,
-      FileSize => $pdf_size
-    });
-
-  } else {
-    debug('Inserting new record.', $debug);
-    $item = db_insert_item($sbid, {
-      Title => $title,
-      MapName => $name,
-      State => $state,
-      MapYear => $year,
-      PubDate => $pub_date,
-      GeoPDF_URL => $pdf_link,
-      FileSize => $pdf_size
-    });
-  }
+  my $item = db_import_item($sbid, {
+    Title => $title,
+    MapName => $name,
+    State => $state,
+    MapYear => $year,
+    PubDate => $pub_date,
+    GeoPDF_URL => $pdf_link,
+    FileSize => $pdf_size
+  });
 
   return $item;
 }
@@ -505,7 +487,8 @@ sub db_get_item {
   my $sbid = shift;
 
   my $sql = "SELECT * FROM maps WHERE SBID=? LIMIT 1;";
-  debug("> $sql", $debug);
+
+  debug_sql($sql, $sbid);
 
   my $sth = $dbh->prepare($sql) or die;
   $sth->execute($sbid);
@@ -538,8 +521,7 @@ sub db_insert_item {
 
   my $sql = "INSERT INTO maps ($columns) VALUES ($placeholders);";
 
-  debug("> $sql", $debug);
-  debug('(' . join(', ', @values) . ')', $debug);
+  debug_sql($sql, @values);
 
   my $sth = $dbh->prepare($sql) or die;
   $sth->execute(@values);
@@ -559,11 +541,28 @@ sub db_update_item {
   my $fields = join(', ', @names);
   my $sql = "UPDATE maps SET $fields WHERE SBID=?;";
 
-  # it would be nice just to print the expanded SQL statement...
-  debug("> $sql", $debug);
-  debug('(' . join(', ', @values) . ')', $debug);
+  debug_sql($sql, @values);
 
   return $dbh->do($sql, undef, @values);
+}
+
+################################################################################
+sub db_import_item {
+  my $sbid = shift;
+  my $params = shift;
+
+  my $item = db_get_item($sbid);
+
+  if ($item) {
+    debug('Updating existing record.', $debug);
+    $item = db_update_item($sbid, $params);
+
+  } else {
+    debug('Inserting new record.', $debug);
+    $item = db_insert_item($sbid, $params);
+  }
+
+  return $item;
 }
 
 ################################################################################
@@ -584,6 +583,15 @@ sub db_download_all {
       update_metadata($row);
     });
   }
+}
+
+################################################################################
+sub debug_sql {
+  my $sql = shift;
+
+  # TODO expand placeholders (or at least approximate the full SQL statement)
+
+  debug("> $sql", $debug);
 }
 
 ################################################################################
