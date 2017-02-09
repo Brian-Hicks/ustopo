@@ -87,7 +87,8 @@ sub usage {
 my $opt_silent = 0;
 my $opt_verbose = 0;
 my $opt_help = 0;
-my $opt_retry = 3;
+my $opt_retry_count = 3;
+my $opt_retry_delay = 5;
 my $opt_catalog = undef;
 my $opt_datadir = undef;
 my $opt_download = 1;
@@ -98,7 +99,7 @@ my $opt_mapname = '{Primary State}/{Map Name}.pdf';
 GetOptions(
   'catalog=s' => \$opt_catalog,
   'datadir=s' => \$opt_datadir,
-  'retry=i' => \$opt_retry,
+  'retry=i' => \$opt_retry_count,
   'mapname=s' => \$opt_mapname,
   'download!' => \$opt_download,
   'stats!' => \$opt_stats,
@@ -279,15 +280,39 @@ sub download_item {
   my $pdf_path = undef;
   my $attempt = 1;
 
-  while (($attempt <= $opt_retry) && (not defined $pdf_path)) {
+  do {
     my $name = $item->{'Map Name'} . ', ' . $item->{'Primary State'};
     debug("Downloading map item: $name [$attempt]", $debug);
 
     $pdf_path = try_download_item($item);
-    $attempt++;
+    return $pdf_path if ($pdf_path);
+
+  } while ($attempt = dl_retry_block($attempt));
+
+  # download failed
+  return $pdf_path;
+}
+
+################################################################################
+# returns the next attempt or false when no more attempts are available
+# FIXME this is kind of a hack...  it's really just to make download_item easier
+# to read.  instead, this is a bit ugly with unexpected return behavior, IMHO
+sub dl_retry_block {
+  my $attempt = shift;
+
+  if (++$attempt > $opt_retry_count) {
+    return 0;
   }
 
-  return $pdf_path;
+  if ($opt_retry_delay) {
+    error("Download failed, retrying in $opt_retry_delay sec", $debug);
+    sleep $opt_retry_delay;
+
+  } else {
+    error('Download failed, retrying', $debug);
+  }
+
+  return $attempt;
 }
 
 ################################################################################
@@ -298,24 +323,17 @@ sub try_download_item {
 
   # download the zip file to a temp location
   my $zipfile = fetch_save($item->{'Download GeoPDF'});
-  unless (($zipfile) and (-s $zipfile)) {
-    error('download error', not $silent);
-    return undef;
-  }
+  return undef unless (($zipfile) and (-s $zipfile));
 
   extract_to($zipfile, $pdf_path);
   unlink $zipfile or carp $!;
 
   # make sure the file exists after extracting
-  unless (-f $pdf_path) {
-    error('failed to extract map', not $silent);
-    return undef;
-  }
+  return undef unless (-f $pdf_path);
 
   # compare file size to published item size in catalog
   unless (-s $pdf_path == $item->{'Byte Count'}) {
     unlink $pdf_path or carp $!;
-    error('download size mismatch', not $silent);
     return undef;
   }
 
