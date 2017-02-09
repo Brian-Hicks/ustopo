@@ -389,6 +389,8 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 
 =over
 
+=item Save catalog to a local database for improved searching.
+
 =item Remove files from the data directory that are not in the catalog (--prune).
 
 =item Specify maximum number of maps to download per session (default to unlimited).

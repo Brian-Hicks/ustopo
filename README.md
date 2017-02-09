@@ -54,6 +54,7 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 
 # TODO
 
+- Save catalog to a local database for improved searching.
 - Remove files from the data directory that are not in the catalog (--prune).
 - Specify maximum number of maps to download per session (default to unlimited).
 - Use a PID file.
