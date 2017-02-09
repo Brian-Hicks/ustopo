@@ -310,6 +310,7 @@ sub sb_update_catalog {
   }
 
   # TODO wrap updates in a transaction
+  # TODO remove items no longer in catalog
 }
 
 ################################################################################
