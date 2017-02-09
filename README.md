@@ -52,7 +52,6 @@ Browse the collection here: [https://www.sciencebase.gov/catalog/item/4f554236e4
 
 # TODO
 
-- Save catalog to a local database for improved searching.
 - Remove files from the data directory that are not in the catalog (--prune).
 - Improve check for a current file using PDF metadata, checksum, etc.
 - Specify maximum number of maps to download per session (default to unlimited).
