@@ -323,20 +323,22 @@ sub try_download_item {
 }
 
 ################################################################################
+# consulted - http://www.perlmonks.org/?node_id=378538
 sub human_bytes {
   my $bytes = shift;
 
-  if ($bytes > 1099511627776) {
-      return sprintf("%.2f TB", $bytes / 1099511627776);
-  } elsif ($bytes > 1073741824) {
-      return sprintf("%.2f GB", $bytes / 1073741824);
-  } elsif ($bytes > 1048576) {
-      return sprintf("%.2f MB", $bytes / 1048576);
-  } elsif ($bytes > 1024) {
-      return sprintf("%.2f KB", $bytes / 1024);
+  # TODO a better way to do this?
+  # FIXME doesn't support negative numbers
+
+  my @sizes = qw( B KB MB GB TB PB );
+  my $i = 0;
+
+  while ($bytes > 1024) {
+    $bytes = $bytes / 1024;
+    $i++;
   }
 
-  return "$bytes B";
+  sprintf('%.2f %s', $bytes, $sizes[$i]);
 }
 
 ################################################################################
