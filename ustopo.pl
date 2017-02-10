@@ -251,7 +251,7 @@ sub fetch_data {
 
   my $dl_length = length($data);
   my $mbps = human_bytes($dl_length / $elapsed) . '/s';
-  debug("Downloaded $dl_length bytes in $elapsed seconds ($mbps)", $debug);
+  msg("Downloaded $dl_length bytes in $elapsed seconds ($mbps)", $verbose);
 
   return $data;
 }
