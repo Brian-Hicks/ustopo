@@ -411,9 +411,9 @@ debug('Finished reading catalog.', $debug);
 
 if ($opt_stats and not $silent) {
   printf("Total items in catalog: %d\n", $stats_num_items);
-  printf("Total size of all items: %d\n", human_bytes($stats_total_bytes));
+  printf("Total size of all items: %s\n", human_bytes($stats_total_bytes));
   printf("Downloaded items: %d\n", $stats_dl_count);
-  printf("Downloaded bytes: %d\n", human_bytes($stats_dl_bytes));
+  printf("Downloaded bytes: %s\n", human_bytes($stats_dl_bytes));
 }
 
 __END__
@@ -470,6 +470,8 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 =item Specify maximum number of maps to download per session (default to unlimited).
 
 =item Use a PID file.
+
+=item Provide some encapsulation for logical components (items, stats, download attempts, etc).
 
 =back
 
