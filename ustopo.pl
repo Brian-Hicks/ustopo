@@ -55,9 +55,11 @@ use Data::Dumper;
 
 =item B<--agent=string> : Override the User Agent string for the download client.
 
-=item B<--verbose> : Display extra logging output for debugging.
+=item B<--verbose> : Print informational messages.
 
-=item B<--silent> : Supress all logging output (overrides --verbose).
+=item B<--debug> : Display extra logging output for debugging.
+
+=item B<--silent> : Supress all logging output (overrides --verbose and --debug).
 
 =item B<--help> : Print a brief help message and exit.
 
@@ -86,6 +88,7 @@ sub usage {
 # parse command line options
 my $opt_silent = 0;
 my $opt_verbose = 0;
+my $opt_debug = 0;
 my $opt_help = 0;
 my $opt_retry_count = 3;
 my $opt_retry_delay = 5;
@@ -105,6 +108,7 @@ GetOptions(
   'stats!' => \$opt_stats,
   'silent' => \$opt_silent,
   'verbose' => \$opt_verbose,
+  'debug' => \$opt_debug,
   'agent=s' => \$opt_agent,
   'help|?' => \$opt_help
 ) or usage(1);
@@ -117,7 +121,8 @@ usage('Data directory is required') unless defined $opt_datadir;
 usage("Directory not found: $opt_datadir") unless -d $opt_datadir;
 
 my $silent = $opt_silent;
-my $debug = ($opt_verbose) && (not $opt_silent);
+my $debug = ($opt_debug) && (not $silent);
+my $verbose = ($opt_verbose or $debug) && (not $silent);
 
 my $datadir = File::Spec->rel2abs($opt_datadir);
 msg("Saving to directory: $datadir", not $silent);
@@ -389,10 +394,10 @@ while (my $item = $csv->fetch) {
   my $local_file = is_current($item);
 
   if ($local_file) {
-    debug("Map is current: $local_file", $debug);
+    msg("Map is current: $local_file", $verbose);
 
   } elsif ($opt_download) {
-    debug("Download required <$cell_id>", $debug);
+    msg("Download required <$cell_id>", $verbose);
     $local_file = download_item($item);
 
     if ($local_file) {
@@ -403,7 +408,7 @@ while (my $item = $csv->fetch) {
     }
 
   } else {
-    debug("Download skipped <$cell_id>", $debug);
+    msg("Download skipped <$cell_id>", $verbose);
   }
 }
 
