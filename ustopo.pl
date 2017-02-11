@@ -95,7 +95,6 @@ my $opt_retry_delay = 5;
 my $opt_catalog = undef;
 my $opt_datadir = undef;
 my $opt_download = 1;
-my $opt_stats = 1;
 my $opt_agent = undef;
 my $opt_mapname = '{Primary State}/{Map Name}.pdf';
 
@@ -105,7 +104,6 @@ GetOptions(
   'retry=i' => \$opt_retry_count,
   'mapname=s' => \$opt_mapname,
   'download!' => \$opt_download,
-  'stats!' => \$opt_stats,
   'silent' => \$opt_silent,
   'verbose' => \$opt_verbose,
   'debug' => \$opt_debug,
@@ -125,10 +123,10 @@ my $debug = ($opt_debug) && (not $silent);
 my $verbose = ($opt_verbose or $debug) && (not $silent);
 
 my $datadir = File::Spec->rel2abs($opt_datadir);
-msg("Saving to directory: $datadir", not $silent);
+printf("Saving to directory: %s\n", $datadir) unless $silent;
 
 my $catalog = File::Spec->rel2abs($opt_catalog);
-msg("Loading catalog: $catalog", not $silent);
+printf("Loading catalog: %s\n", $catalog) unless $silent;
 
 debug("Filename format: $opt_mapname", $debug);
 
@@ -138,15 +136,6 @@ my $client = LWP::UserAgent->new;
 
 defined $opt_agent and $client->agent($opt_agent);
 debug('User Agent: ' . $client->agent, $debug);
-
-################################################################################
-# for tracking program stats
-
-my $stats_num_items = 0;
-my $stats_total_bytes = 0;
-my $stats_dl_count = 0;
-my $stats_dl_bytes = 0;
-my $stats_time_started = [gettimeofday];
 
 ################################################################################
 # generate the full file path for a given record - the argument is a hashref
@@ -382,14 +371,11 @@ my $csv = Parse::CSV->new(
 debug('Reading catalog...', $debug);
 
 while (my $item = $csv->fetch) {
-  $stats_num_items++;
-  $stats_total_bytes += $item->{'Byte Count'};
-
   my $name = $item->{'Map Name'};
   my $state = $item->{'Primary State'};
   my $cell_id = $item->{'Cell ID'};
 
-  msg("Processing map: $name, $state <$cell_id>", not $silent);
+  printf("Processing map: %s, %s, %s\n", $name, $state, $cell_id) unless $silent;
 
   my $local_file = is_current($item);
 
@@ -401,8 +387,6 @@ while (my $item = $csv->fetch) {
     $local_file = download_item($item);
 
     if ($local_file) {
-      $stats_dl_count++;
-      $stats_dl_bytes += $item->{'Byte Count'};
     } else {
       error("Download failed for <$cell_id>", not $silent);
     }
@@ -413,13 +397,6 @@ while (my $item = $csv->fetch) {
 }
 
 debug('Finished reading catalog.', $debug);
-
-if ($opt_stats and not $silent) {
-  printf("Total items in catalog: %d\n", $stats_num_items);
-  printf("Total size of all items: %s\n", human_bytes($stats_total_bytes));
-  printf("Downloaded items: %d\n", $stats_dl_count);
-  printf("Downloaded bytes: %s\n", human_bytes($stats_dl_bytes));
-}
 
 __END__
 
@@ -476,7 +453,7 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 
 =item Use a PID file.
 
-=item Provide some encapsulation for logical components (items, stats, download attempts, etc).
+=item Provide some encapsulation for logical components (items, download attempts, etc).
 
 =back
 
