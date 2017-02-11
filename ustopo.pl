@@ -178,7 +178,7 @@ sub is_current {
 
 ################################################################################
 # extract the first member of an archive to a specifc filename
-sub extract_to {
+sub extract_one {
   my ($zipfile, $tofile) = @_;
 
   debug("Loading archive: $zipfile", $debug);
@@ -319,7 +319,7 @@ sub try_download_item {
   my $zipfile = fetch_save($item->{'Download GeoPDF'});
   return undef unless (($zipfile) and (-s $zipfile));
 
-  extract_to($zipfile, $pdf_path);
+  extract_one($zipfile, $pdf_path);
   unlink $zipfile or carp $!;
 
   # make sure the file exists after extracting
