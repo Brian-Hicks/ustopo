@@ -25,6 +25,7 @@ use File::Spec;
 use File::Path qw( mkpath );
 use File::Temp qw( tempfile );
 use File::Basename;
+use File::Find;
 
 use LWP::UserAgent;
 use Archive::Zip qw( :ERROR_CODES );
@@ -48,6 +49,10 @@ use Data::Dumper;
 =item B<--download> : Download new map items (default behavior).
 
 =item B<--no-download> : Do not download new map items.
+
+=item B<--prune> : Remove extra files from data directory.
+
+=item B<--no-download> : Do not remove extra files (default behavior).
 
 =item B<--mapname=string> : Specify the format string for map filenames.
 
@@ -95,6 +100,7 @@ my $opt_retry_delay = 5;
 my $opt_catalog = undef;
 my $opt_datadir = undef;
 my $opt_download = 1;
+my $opt_prune = 0;
 my $opt_agent = undef;
 my $opt_mapname = '{Primary State}/{Map Name}.pdf';
 
@@ -104,6 +110,7 @@ GetOptions(
   'retry=i' => \$opt_retry_count,
   'mapname=s' => \$opt_mapname,
   'download!' => \$opt_download,
+  'prune!' => \$opt_prune,
   'silent' => \$opt_silent,
   'verbose' => \$opt_verbose,
   'debug' => \$opt_debug,
@@ -136,6 +143,9 @@ my $client = LWP::UserAgent->new;
 
 defined $opt_agent and $client->agent($opt_agent);
 debug('User Agent: ' . $client->agent, $debug);
+
+# track valid files
+my %files = { };
 
 ################################################################################
 # generate the full file path for a given record - the argument is a hashref
@@ -355,6 +365,20 @@ sub pretty_bytes {
 }
 
 ################################################################################
+# pruning function for files that are not valid for the current catalog
+sub prune {
+  my $path = $File::Find::name;
+
+  # TODO remove empty directories
+  return if (-d $path);
+
+  unless (exists($files{$path})) {
+    msg("Removing file: $path", $verbose);
+    unlink $path or carp $!;
+  }
+}
+
+################################################################################
 ## MAIN ENTRY
 
 debug("Parsing catalog file: $opt_catalog", $debug);
@@ -382,12 +406,14 @@ while (my $item = $csv->fetch) {
 
   if ($local_file) {
     msg("Map is current: $local_file", $verbose);
+    $files{$local_file} = 1;
 
   } elsif ($opt_download) {
     msg("Download required <$cell_id>", $verbose);
     $local_file = download_item($item);
 
     if ($local_file) {
+      $files{$local_file} = 1;
     } else {
       error("Download failed for <$cell_id>", not $silent);
     }
@@ -398,6 +424,11 @@ while (my $item = $csv->fetch) {
 }
 
 debug('Finished reading catalog.', $debug);
+
+if ($opt_prune) {
+  printf("Pruning orphaned files and empty directories...\n") unless $silent;
+  finddepth(\&prune, $datadir);
+}
 
 __END__
 
@@ -447,8 +478,6 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 =over
 
 =item Save catalog to a local database for improved searching.
-
-=item Remove files from the data directory that are not in the catalog (--prune).
 
 =item Specify maximum number of maps to download per session (default to unlimited).
 

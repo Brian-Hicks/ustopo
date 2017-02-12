@@ -12,11 +12,14 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 - **--data=dir** : Directory location to save maps when downloading.
 - **--download** : Download new map items (default behavior).
 - **--no-download** : Do not download new map items.
+- **--prune** : Remove extra files from data directory.
+- **--no-download** : Do not remove extra files (default behavior).
 - **--mapname=string** : Specify the format string for map filenames.
 - **--retry=num** : Number of retries for failed downloads (default=3).
 - **--agent=string** : Override the User Agent string for the download client.
-- **--verbose** : Display extra logging output for debugging.
-- **--silent** : Supress all logging output (overrides --verbose).
+- **--verbose** : Print informational messages.
+- **--debug** : Display extra logging output for debugging.
+- **--silent** : Supress all logging output (overrides --verbose and --debug).
 - **--help** : Print a brief help message and exit.
 
 # DESCRIPTION
@@ -55,7 +58,6 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 # TODO
 
 - Save catalog to a local database for improved searching.
-- Remove files from the data directory that are not in the catalog (--prune).
 - Specify maximum number of maps to download per session (default to unlimited).
 - Use a PID file.
-- Mode to report catalog stats (--stats).
+- Provide some encapsulation for logical components (items, download attempts, etc).
