@@ -290,7 +290,8 @@ sub download_item {
     $pdf_path = try_download_item($item);
     return $pdf_path if ($pdf_path);
 
-  } while ($attempt = dl_retry_block($attempt));
+    $attempt = dl_retry_block($attempt);
+  } while ($attempt);
 
   # download failed
   return $pdf_path;
