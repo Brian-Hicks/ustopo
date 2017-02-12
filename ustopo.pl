@@ -218,7 +218,7 @@ sub extract_one {
 }
 
 ################################################################################
-# download a file and save it locally - NOTE file will be deleted on exit
+# download a remote file and return the content
 sub fetch_data {
   my ($url) = @_;
 
@@ -230,7 +230,6 @@ sub fetch_data {
 
   debug('HTTP ' . $resp->status_line, $debug);
 
-  # TODO maybe better to go to the next file?  especially for 404...
   if ($resp->is_error) {
     error('download error: ' . $resp->status_line, not $silent);
     return undef;
@@ -239,7 +238,7 @@ sub fetch_data {
   my $data = $resp->decoded_content;
 
   my $dl_length = length($data);
-  my $mbps = human_bytes($dl_length / $elapsed) . '/s';
+  my $mbps = pretty_bytes($dl_length / $elapsed) . '/s';
   msg("Downloaded $dl_length bytes in $elapsed seconds ($mbps)", $verbose);
 
   return $data;
@@ -336,21 +335,23 @@ sub try_download_item {
 
 ################################################################################
 # consulted - http://www.perlmonks.org/?node_id=378538
-sub human_bytes {
+sub pretty_bytes {
   my $bytes = shift;
 
   # TODO a better way to do this?
-  # FIXME doesn't support negative numbers
 
-  my @sizes = qw( B KB MB GB TB PB );
-  my $i = 0;
+  my @units = qw( B KB MB GB TB PB EB ZB YB );
+  my $unit = 0;
+
+  my $sign = ($bytes < 0) ? -1 : 1;
+  $bytes = abs($bytes);
 
   while ($bytes > 1024) {
-    $bytes = $bytes / 1024;
-    $i++;
+    $bytes /= 1024;
+    $unit++;
   }
 
-  sprintf('%.2f %s', $bytes, $sizes[$i]);
+  sprintf('%.2f %s', $sign*$bytes, $units[$unit]);
 }
 
 ################################################################################
@@ -375,7 +376,7 @@ while (my $item = $csv->fetch) {
   my $state = $item->{'Primary State'};
   my $cell_id = $item->{'Cell ID'};
 
-  printf("Processing map: %s, %s, %s\n", $name, $state, $cell_id) unless $silent;
+  printf("Processing map: %s, %s <%s>\n", $name, $state, $cell_id) unless $silent;
 
   my $local_file = is_current($item);
 
