@@ -17,9 +17,8 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 - **--mapname=string** : Specify the format string for map filenames.
 - **--retry=num** : Number of retries for failed downloads (default=3).
 - **--agent=string** : Override the User Agent string for the download client.
-- **--verbose** : Print informational messages.
-- **--debug** : Display extra logging output for debugging.
-- **--silent** : Supress all logging output (overrides --verbose and --debug).
+- **--verbose** : Print informational messages (-vv for debug output).
+- **--silent** : Supress all logging output (overrides --verbose).
 - **--help** : Print a brief help message and exit.
 
 # DESCRIPTION

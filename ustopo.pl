@@ -60,11 +60,9 @@ use Data::Dumper;
 
 =item B<--agent=string> : Override the User Agent string for the download client.
 
-=item B<--verbose> : Print informational messages.
+=item B<--verbose> : Print informational messages (-vv for debug output).
 
-=item B<--debug> : Display extra logging output for debugging.
-
-=item B<--silent> : Supress all logging output (overrides --verbose and --debug).
+=item B<--silent> : Supress all logging output (overrides --verbose).
 
 =item B<--help> : Print a brief help message and exit.
 
@@ -93,7 +91,6 @@ sub usage {
 # parse command line options
 my $opt_silent = 0;
 my $opt_verbose = 0;
-my $opt_debug = 0;
 my $opt_help = 0;
 my $opt_retry_count = 3;
 my $opt_retry_delay = 5;
@@ -111,9 +108,8 @@ GetOptions(
   'mapname=s' => \$opt_mapname,
   'download!' => \$opt_download,
   'prune!' => \$opt_prune,
-  'silent' => \$opt_silent,
-  'verbose' => \$opt_verbose,
-  'debug' => \$opt_debug,
+  'silent|q' => \$opt_silent,
+  'verbose|v+' => \$opt_verbose,
   'agent=s' => \$opt_agent,
   'help|?' => \$opt_help
 ) or usage(1);
@@ -126,8 +122,8 @@ usage('Data directory is required') unless defined $opt_datadir;
 usage("Directory not found: $opt_datadir") unless -d $opt_datadir;
 
 my $silent = $opt_silent;
-my $debug = ($opt_debug) && (not $silent);
-my $verbose = ($opt_verbose or $debug) && (not $silent);
+my $verbose = ($opt_verbose >= 1) && (not $silent);
+my $debug = ($opt_verbose >= 2) && (not $silent);
 
 my $datadir = File::Spec->rel2abs($opt_datadir);
 printf("Saving to directory: %s\n", $datadir) unless $silent;
