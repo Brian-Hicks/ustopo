@@ -52,7 +52,7 @@ use Data::Dumper;
 
 =item B<--prune> : Remove extra files from data directory.
 
-=item B<--no-download> : Do not remove extra files (default behavior).
+=item B<--no-prune> : Do not remove extra files (default behavior).
 
 =item B<--mapname=string> : Specify the format string for map filenames.
 

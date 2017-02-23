@@ -13,7 +13,7 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 - **--download** : Download new map items (default behavior).
 - **--no-download** : Do not download new map items.
 - **--prune** : Remove extra files from data directory.
-- **--no-download** : Do not remove extra files (default behavior).
+- **--no-prune** : Do not remove extra files (default behavior).
 - **--mapname=string** : Specify the format string for map filenames.
 - **--retry=num** : Number of retries for failed downloads (default=3).
 - **--agent=string** : Override the User Agent string for the download client.
