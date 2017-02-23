@@ -55,13 +55,17 @@ use Data::Dumper;
 
 =item B<--no-download> : Do not download new map items.
 
+=item B<--prune> : Remove extra files from data directory.
+
+=item B<--no-prune> : Do not remove extra files (default behavior).
+
 =item B<--mapname=string> : Specify the format string for map filenames.
 
 =item B<--retry=num> : Number of retries for failed downloads (default=3).
 
 =item B<--agent=string> : Override the User Agent string for the download client.
 
-=item B<--verbose> : Display extra logging output for debugging.
+=item B<--verbose> : Print informational messages (-vv for debug output).
 
 =item B<--silent> : Supress all logging output (overrides --verbose).
 
@@ -98,17 +102,21 @@ my $opt_datadir = undef;
 my $opt_agent = undef;
 my $opt_retry = 3;
 my $opt_mapname = '{State}/{MapName}.pdf';
+my $opt_retry_count = 3;
+my $opt_retry_delay = 5;
 my $opt_update = 1;
 my $opt_download = 1;
+my $opt_prune = 0;
 
 GetOptions(
   'datadir=s' => \$opt_datadir,
-  'retry=i' => \$opt_retry,
+  'retry=i' => \$opt_retry_count,
   'mapname=s' => \$opt_mapname,
   'update!' => \$opt_update,
   'download!' => \$opt_download,
-  'silent' => \$opt_silent,
-  'verbose' => \$opt_verbose,
+  'prune!' => \$opt_prune,
+  'silent|q' => \$opt_silent,
+  'verbose|v+' => \$opt_verbose,
   'agent=s' => \$opt_agent,
   'help|?' => \$opt_help
 ) or usage(1);
@@ -119,10 +127,11 @@ usage('Data directory is required') unless defined $opt_datadir;
 usage("Directory not found: $opt_datadir") unless -d $opt_datadir;
 
 my $silent = $opt_silent;
-my $debug = ($opt_verbose) && (not $opt_silent);
+my $verbose = ($opt_verbose >= 1) && (not $silent);
+my $debug = ($opt_verbose >= 2) && (not $silent);
 
 my $datadir = File::Spec->rel2abs($opt_datadir);
-msg("Saving to directory: $datadir", not $silent);
+printf("Saving to directory: %s\n", $datadir) unless $silent;
 
 debug("Filename format: $opt_mapname", $debug);
 
@@ -185,7 +194,7 @@ sub is_current {
 
   my $pdf_len = -s $pdf_path;
   debug("Local file size: $pdf_len bytes (expecting $item_len)", $debug);
-  return undef unless ($pdf_len eq $item_len);
+  return undef unless ($pdf_len == $item_len);
 
   # all is well...
   return $pdf_path;
@@ -204,7 +213,6 @@ sub fetch_data {
 
   debug('HTTP ' . $resp->status_line, $debug);
 
-  # TODO maybe better to go to the next file?  especially for 404...
   if ($resp->is_error) {
     error('download error: ' . $resp->status_line, not $silent);
     return undef;
@@ -213,8 +221,8 @@ sub fetch_data {
   my $data = $resp->decoded_content;
 
   my $dl_length = length($data);
-  my $mbps = ($dl_length / $elapsed) / (1024*1024);
-  debug("Downloaded $dl_length bytes in $elapsed seconds ($mbps MB/s)", $debug);
+  my $mbps = pretty_bytes($dl_length / $elapsed) . '/s';
+  msg("Downloaded $dl_length bytes in $elapsed seconds ($mbps)", $verbose);
 
   return $data;
 }
@@ -265,15 +273,40 @@ sub download_item {
   my $pdf_path = undef;
   my $attempt = 1;
 
-  while (($attempt <= $opt_retry) && (not defined $pdf_path)) {
-    my $name = $item->{'Map Name'} . ', ' . $item->{'Primary State'};
+  do {
+    my $name = $item->{MapName} . ', ' . $item->{State};
     debug("Downloading map item: $name [$attempt]", $debug);
 
     $pdf_path = try_download_item($item);
-    $attempt++;
+    return $pdf_path if ($pdf_path);
+
+    $attempt = dl_retry_block($attempt);
+  } while ($attempt);
+
+  # download failed
+  return $pdf_path;
+}
+
+################################################################################
+# returns the next attempt or false when no more attempts are available
+# FIXME this is kind of a hack...  it's really just to make download_item easier
+# to read.  instead, this is a bit ugly with unexpected return behavior, IMHO
+sub dl_retry_block {
+  my $attempt = shift;
+
+  if (++$attempt > $opt_retry_count) {
+    return 0;
   }
 
-  return $pdf_path;
+  if ($opt_retry_delay) {
+    error("Download failed, retrying in $opt_retry_delay sec", $debug);
+    sleep $opt_retry_delay;
+
+  } else {
+    error('Download failed, retrying', $debug);
+  }
+
+  return $attempt;
 }
 
 ################################################################################
@@ -284,9 +317,8 @@ sub try_download_item {
   fetch_save($item->{GeoPDF_URL}, $pdf_path);
 
   # compare file size to published item size in catalog
-  unless (-s $pdf_path eq $item->{FileSize}) {
+  unless (-s $pdf_path == $item->{FileSize}) {
     unlink $pdf_path or carp $!;
-    error('download size mismatch', not $silent);
     return undef;
   }
 
@@ -294,6 +326,49 @@ sub try_download_item {
 }
 
 ################################################################################
+# consulted - http://www.perlmonks.org/?node_id=378538
+sub pretty_bytes {
+  my $bytes = shift;
+
+  # TODO a better way to do this?
+
+  my @units = qw( B KB MB GB TB PB EB ZB YB );
+  my $unit = 0;
+
+  my $sign = ($bytes < 0) ? -1 : 1;
+  $bytes = abs($bytes);
+
+  while ($bytes > 1024) {
+    $bytes /= 1024;
+    $unit++;
+  }
+
+  sprintf('%.2f %s', $sign*$bytes, $units[$unit]);
+}
+
+################################################################################
+sub prune_orphans {
+  printf("Pruning orphaned files and empty directories...\n") unless $silent;
+  finddepth(\&prune, $datadir);
+}
+
+################################################################################
+# pruning function for files that are not valid for the current catalog
+sub prune {
+  my $path = $File::Find::name;
+
+  # TODO remove empty directories
+  return if (-d $path);
+
+  # TODO check database for file path
+  #unless (exists($files{$path})) {
+  #  msg("Removing file: $path", $verbose);
+  #  unlink $path or carp $!;
+  #}
+}
+
+################################################################################
+## MAIN ENTRY
 # update the internal catalog from ScienceBase
 sub sb_update_catalog {
   my $url = "$sb_catalog/items?parentId=$sb_ustopo_id&max=$sb_max_items&format=json";
@@ -605,13 +680,16 @@ sub update_local_file {
   if ($local_file) {
     debug("Map is current: $local_file", $debug);
 
-  } else {
-    debug("Download required <$sbid>", $debug);
+  } elsif ($opt_download) {
+    msg("Download required <$sbid>", $verbose);
     $local_file = download_item($item);
 
     unless ($local_file) {
       error("Download failed for <$sbid>", not $silent);
     }
+
+  } else {
+    msg("Download skipped <$sbid>", $verbose);
   }
 
   db_update_item($item->{SBID}, {
@@ -633,8 +711,7 @@ sub update_metadata {
 db_migrate();
 sb_update_catalog() if $opt_update;
 db_download_all() if $opt_download;
-
-# TODO remove extra files in $datadir
+prune_orphans() if $opt_prune;
 
 __END__
 
@@ -688,7 +765,7 @@ Browse the collection here: L<https://www.sciencebase.gov/catalog/item/4f554236e
 
 =item Use a PID file.
 
-=item Mode to report catalog stats (--stats).
+=item Provide some encapsulation for logical components (items, download attempts, etc).
 
 =item Store configuration options in database (e.g. mapname, user agent, etc).
 
