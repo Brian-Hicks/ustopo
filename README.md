@@ -56,6 +56,7 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 
 # TODO
 
+- Automatically download the latest catalog.
 - Save catalog to a local database for improved searching.
 - Specify maximum number of maps to download per session (default to unlimited).
 - Use a PID file.

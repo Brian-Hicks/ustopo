@@ -474,6 +474,8 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 
 =over
 
+=item Automatically download the latest catalog.
+
 =item Save catalog to a local database for improved searching.
 
 =item Specify maximum number of maps to download per session (default to unlimited).
