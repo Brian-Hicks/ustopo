@@ -31,7 +31,8 @@ use LWP::UserAgent;
 use Archive::Zip qw( :ERROR_CODES );
 use Time::HiRes qw( gettimeofday tv_interval );
 
-use Log::Message::Simple qw( :STD :CARP );
+use Carp;
+use Log::Message::Simple qw( :STD );
 use Data::Dumper;
 
 ################################################################################
@@ -42,9 +43,9 @@ use Data::Dumper;
 
 =over
 
-=item B<--catalog=file> : CSV catalog file from the USGS.
-
 =item B<--data=dir> : Directory location to save maps when downloading.
+
+=item B<--catalog=file> : CSV catalog file from the USGS.
 
 =item B<--download> : Download new map items (default behavior).
 
@@ -92,18 +93,22 @@ sub usage {
 my $opt_silent = 0;
 my $opt_verbose = 0;
 my $opt_help = 0;
-my $opt_retry_count = 3;
-my $opt_retry_delay = 5;
+
 my $opt_catalog = undef;
 my $opt_datadir = undef;
+
 my $opt_download = 1;
 my $opt_prune = 0;
+
+my $opt_retry_count = 3;
+my $opt_retry_delay = 5;
+
 my $opt_agent = undef;
 my $opt_mapname = '{Primary State}/{Map Name}.pdf';
 
 GetOptions(
-  'catalog=s' => \$opt_catalog,
   'datadir=s' => \$opt_datadir,
+  'catalog=s' => \$opt_catalog,
   'retry=i' => \$opt_retry_count,
   'mapname=s' => \$opt_mapname,
   'download!' => \$opt_download,
@@ -483,6 +488,8 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 =item Use a PID file.
 
 =item Provide some encapsulation for logical components (items, download attempts, etc).
+
+=item Load config options from file.
 
 =back
 

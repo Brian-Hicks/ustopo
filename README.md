@@ -8,8 +8,8 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 
 # OPTIONS
 
-- **--catalog=file** : CSV catalog file from the USGS.
 - **--data=dir** : Directory location to save maps when downloading.
+- **--catalog=file** : CSV catalog file from the USGS.
 - **--download** : Download new map items (default behavior).
 - **--no-download** : Do not download new map items.
 - **--prune** : Remove extra files from data directory.
@@ -61,3 +61,4 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 - Specify maximum number of maps to download per session (default to unlimited).
 - Use a PID file.
 - Provide some encapsulation for logical components (items, download attempts, etc).
+- Load config options from file.
