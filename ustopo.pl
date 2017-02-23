@@ -34,7 +34,8 @@ use LWP::UserAgent;
 use Archive::Zip qw( :ERROR_CODES );
 use Time::HiRes qw( gettimeofday tv_interval );
 
-use Log::Message::Simple qw( :STD :CARP );
+use Carp;
+use Log::Message::Simple qw( :STD );
 use Data::Dumper;
 
 ################################################################################
@@ -50,6 +51,10 @@ use Data::Dumper;
 =item B<--update> : Update ScienceBase catalog (default behavior).
 
 =item B<--no-update> : Do not update ScienceBase catalog.
+
+=item B<--data=dir> : Directory location to save maps when downloading.
+
+=item B<--catalog=file> : CSV catalog file from the USGS.
 
 =item B<--download> : Download new map items (default behavior).
 
@@ -98,15 +103,19 @@ sub usage {
 my $opt_silent = 0;
 my $opt_verbose = 0;
 my $opt_help = 0;
+
+my $opt_catalog = undef;
 my $opt_datadir = undef;
-my $opt_agent = undef;
-my $opt_retry = 3;
-my $opt_mapname = '{State}/{MapName}.pdf';
-my $opt_retry_count = 3;
-my $opt_retry_delay = 5;
+
 my $opt_update = 1;
 my $opt_download = 1;
 my $opt_prune = 0;
+
+my $opt_retry_count = 3;
+my $opt_retry_delay = 5;
+
+my $opt_agent = undef;
+my $opt_mapname = '{State}/{MapName}.pdf';
 
 GetOptions(
   'datadir=s' => \$opt_datadir,
@@ -194,7 +203,7 @@ sub is_current {
 
   my $pdf_len = -s $pdf_path;
   debug("Local file size: $pdf_len bytes (expecting $item_len)", $debug);
-  return undef unless ($pdf_len == $item_len);
+  return undef unless ($pdf_len eq $item_len);
 
   # all is well...
   return $pdf_path;
@@ -317,7 +326,7 @@ sub try_download_item {
   fetch_save($item->{GeoPDF_URL}, $pdf_path);
 
   # compare file size to published item size in catalog
-  unless (-s $pdf_path == $item->{FileSize}) {
+  unless (-s $pdf_path eq $item->{FileSize}) {
     unlink $pdf_path or carp $!;
     return undef;
   }
