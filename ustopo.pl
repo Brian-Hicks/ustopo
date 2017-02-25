@@ -146,7 +146,7 @@ defined $opt_agent and $client->agent($opt_agent);
 debug('User Agent: ' . $client->agent, $debug);
 
 # track valid files
-my %files = { };
+my %files = ( );
 
 ################################################################################
 # generate the full file path for a given record - the argument is a hashref
