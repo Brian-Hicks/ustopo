@@ -22,18 +22,11 @@ use Pod::Usage;
 
 use Parse::CSV;
 use File::Spec;
-use File::Path qw( mkpath );
-use File::Temp qw( tempfile );
-use File::Basename;
 use File::Find;
 
-use LWP::UserAgent;
-use Archive::Zip qw( :ERROR_CODES );
-use Time::HiRes qw( gettimeofday tv_interval );
-
 use Carp;
-use Log::Message::Simple qw( :STD );
 use Data::Dumper;
+use Log::Message::Simple qw( :STD );
 
 ################################################################################
 
@@ -74,23 +67,6 @@ use Data::Dumper;
 =cut
 
 ################################################################################
-# a convenience method for displaying usage information & exit with an error by default
-sub usage {
-  my $message = shift;
-  my $exitval = 1;
-
-  if (looks_like_number($message)) {
-    $exitval = $message;
-    $message = undef;
-  }
-
-  pod2usage( -message => $message, -exitval => $exitval );
-
-  # pod2usage should take care of this, but just in case...
-  exit $exitval;
-}
-
-################################################################################
 # parse command line options
 my $opt_silent = 0;
 my $opt_verbose = 0;
@@ -106,7 +82,7 @@ my $opt_retry_count = 3;
 my $opt_retry_delay = 5;
 
 my $opt_agent = undef;
-my $opt_mapname = '{Primary State}/{Map Name}.pdf';
+my $opt_mapname = '{State}/{Name}.pdf';
 
 GetOptions(
   'datadir=s' => \$opt_datadir,
@@ -140,25 +116,170 @@ debug("Filename format: $opt_mapname", $debug);
 debug("Download limit: $opt_download", $debug);
 
 ################################################################################
-# configure the common client for download files
-my $client = LWP::UserAgent->new;
+# a convenience method for displaying usage information & exit with an error by default
+sub usage {
+  my $message = shift;
+  my $exitval = 1;
 
-defined $opt_agent and $client->agent($opt_agent);
-debug('User Agent: ' . $client->agent, $debug);
+  if (looks_like_number($message)) {
+    $exitval = $message;
+    $message = undef;
+  }
 
-# track valid files
-my %files = ( );
+  pod2usage( -message => $message, -exitval => $exitval );
+
+  # pod2usage should take care of this, but just in case...
+  exit $exitval;
+}
 
 ################################################################################
-# generate the full file path for a given record - the argument is a hashref
-sub get_local_path {
-  my ($item) = @_;
+# consulted - http://www.perlmonks.org/?node_id=378538
+sub pretty_bytes {
+  my $bytes = shift;
+
+  # TODO a better way to do this?
+
+  my @units = qw( B KB MB GB TB PB EB ZB YB );
+  my $unit = 0;
+
+  my $sign = ($bytes < 0) ? -1 : 1;
+  $bytes = abs($bytes);
+
+  while ($bytes > 1024) {
+    $bytes /= 1024;
+    $unit++;
+  }
+
+  sprintf('%.2f %s', $sign*$bytes, $units[$unit]);
+}
+
+################################################################################
+# pruning function for files that are not valid for the current catalog
+
+my %files = ( );
+
+sub prune {
+  my $path = $File::Find::name;
+
+  # TODO remove empty directories
+  return if (-d $path);
+
+  unless (exists($files{$path})) {
+    msg("Removing file: $path", $verbose);
+    unlink $path or carp $!;
+  }
+}
+
+################################################################################
+package ObjectBase;
+
+use Log::Message::Simple qw( :STD );
+
+#-------------------------------------------------------------------------------
+sub get {
+  my ($self, $key) = @_;
+
+  $self->{$key};
+}
+
+#-------------------------------------------------------------------------------
+sub set {
+  my ($self, $key, $value) = @_;
+
+  $self->{$key} = $value;
+}
+
+#-------------------------------------------------------------------------------
+sub get_set {
+  my ($self, $key, $value) = @_;
+
+  if ($value) {
+    $self->set($key, $value);
+  }
+
+  $self->get($key);
+}
+
+################################################################################
+package CatalogItem;
+
+use parent -norequire, 'ObjectBase';
+
+use File::Spec;
+use Log::Message::Simple qw( :STD );
+
+#-------------------------------------------------------------------------------
+sub new {
+  my ($proto, $id) = @_;
+
+  my $self = {
+    ID => $id
+  };
+
+  bless($self);
+  return $self;
+}
+
+#-------------------------------------------------------------------------------
+# a unique identifier for this map file
+sub id {
+  my ($self) = @_;
+  $self->get('ID');
+}
+
+#-------------------------------------------------------------------------------
+# the URL for downloading the map file
+sub url {
+  my ($self, $value) = @_;
+  $self->get_set('URL', $value);
+}
+
+#-------------------------------------------------------------------------------
+# the size of the map file in bytes
+sub file_size {
+  my ($self, $value) = @_;
+  $self->get_set('FileSize', $value);
+}
+
+#-------------------------------------------------------------------------------
+# the name of this map
+sub name {
+  my ($self, $value) = @_;
+  $self->get_set('Name', $value);
+}
+
+#-------------------------------------------------------------------------------
+# the title of this map
+sub title {
+  my ($self) = @_;
+
+  sprintf('USGS US Topo map for %s, %s %d', $self->name, $self->state, $self->year);
+}
+
+#-------------------------------------------------------------------------------
+# the primary state this map covers
+sub state {
+  my ($self, $value) = @_;
+  $self->get_set('State', $value);
+}
+
+#-------------------------------------------------------------------------------
+# the year imprinted on this map
+sub year {
+  my ($self, $value) = @_;
+  $self->get_set('Year', $value);
+}
+
+#-------------------------------------------------------------------------------
+# generate the full file path for the current item
+sub local_path {
+  my ($self) = @_;
 
   my $filename = $opt_mapname;
   while ($filename =~ m/{([^}]+)}/) {
     my $field = $1;
 
-    my $value = $item->{$field};
+    my $value = $self->{$field};
     $value =~ s/[^A-Za-z0-9_ -]/_/g;
 
     $filename =~ s/{$field}/$value/g;
@@ -167,12 +288,12 @@ sub get_local_path {
   File::Spec->join($datadir, $filename);
 }
 
-################################################################################
-# determines if the local copy of item is current
+#-------------------------------------------------------------------------------
+# determines if the local copy of item is current, returns the local path if so
 sub is_current {
-  my ($item) = @_;
+  my ($self, $item) = @_;
 
-  my $pdf_path = get_local_path($item);
+  my $pdf_path = $self->local_path;
 
   # first, make sure the file exists
   debug("Checking for local file: $pdf_path", $debug);
@@ -180,15 +301,240 @@ sub is_current {
 
   # make sure the size of the local file matches the published item
   my $pdf_len = -s $pdf_path;
-  my $item_len = $item->{'Byte Count'};
-  debug("Local file size: $pdf_len bytes (expecting $item_len)", $debug);
-  return undef unless ($pdf_len eq $item_len);
+  my $pub_len = $self->file_size;
+
+  debug("Local file size: $pdf_len bytes (expecting $pub_len)", $debug);
+  return undef unless ($pdf_len eq $pub_len);
 
   # all is well...
   return $pdf_path;
 }
 
+#-------------------------------------------------------------------------------
+sub from_csv {
+  my $row = shift;
+
+  my $id = $row->{'Cell ID'};
+  debug("Parsing CatalogItem <$id>", $debug);
+
+  my $item = CatalogItem->new($id);
+  $item->name($row->{'Map Name'});
+  $item->state($row->{'Primary State'});
+  $item->url($row->{'Download GeoPDF'});
+  $item->file_size($row->{'Byte Count'});
+  $item->year($row->{'Date On Map'});
+
+  $item;
+}
+
 ################################################################################
+package DownloadClient;
+
+use parent -norequire, 'ObjectBase';
+
+use Time::HiRes qw( gettimeofday tv_interval );
+use File::Temp qw( tempfile );
+use Log::Message::Simple qw( :STD );
+use LWP::UserAgent;
+
+debug("libwww-perl-$LWP::VERSION", $debug);
+
+#-------------------------------------------------------------------------------
+sub new {
+  my ($proto) = @_;
+
+  my $ua = LWP::UserAgent->new;
+
+  defined $opt_agent and $ua->agent($opt_agent);
+  debug('User Agent: ' . $ua->agent, $debug);
+
+  my $self = {
+    _ua => $ua
+  };
+
+  bless($self);
+  return $self;
+}
+
+#-------------------------------------------------------------------------------
+# download a remote file and return the content
+sub fetch_data {
+  my ($self, $url) = @_;
+
+  my $client = $self->{_ua};
+  debug("Downloading URL: $url", $debug);
+
+  my $time_start = [gettimeofday];
+  my $resp = $client->get($url);
+  my $elapsed = tv_interval($time_start);
+
+  debug('HTTP ' . $resp->status_line, $debug);
+
+  if ($resp->is_error) {
+    error('download error: ' . $resp->status_line, not $silent);
+    return undef;
+  }
+
+  my $data = $resp->decoded_content;
+
+  my $dl_length = length($data);
+  my $mbps = ::pretty_bytes($dl_length / $elapsed) . '/s';
+  msg("Downloaded $dl_length bytes in $elapsed seconds ($mbps)", $verbose);
+
+  return $data;
+}
+
+#-------------------------------------------------------------------------------
+# download a file and save it locally - NOTE file will be deleted on exit
+sub fetch_save {
+  my ($self, $url) = @_;
+
+  my $data = $self->fetch_data($url) or return undef;
+
+  # save the full content to a temporary file
+  my ($fh, $tmpfile) = tempfile('ustopo_plXXXX', TMPDIR => 1, UNLINK => 1);
+  debug("Saving download: $tmpfile", $debug);
+
+  # TODO error checking on I/O
+
+  # assume that the content is binary
+  binmode $fh;
+  print $fh $data;
+  close $fh;
+
+  return $tmpfile;
+}
+
+################################################################################
+package DownloadManager;
+
+use parent -norequire, 'ObjectBase';
+
+use File::Path qw( mkpath );
+use File::Basename;
+use Archive::Zip qw( :ERROR_CODES );
+use Log::Message::Simple qw( :STD );
+
+#-------------------------------------------------------------------------------
+sub new {
+  my ($proto) = @_;
+
+  my $client = DownloadClient->new;
+
+  my $self = {
+    _client => $client,
+    DownloadCount => 0,
+    TotalBytes => 0,
+    RemainingAttempts => undef
+  };
+
+  bless($self);
+  return $self;
+}
+
+#-------------------------------------------------------------------------------
+# returns the number of items that have been succesfully downloaded
+sub count {
+  my ($self, $value) = @_;
+  $self->get_set('DownloadCount', $value);
+}
+
+#-------------------------------------------------------------------------------
+# determines if the download manager is able to download items
+sub enabled {
+  my ($self) = @_;
+
+  ($opt_download eq 0) or ($self->count lt $opt_download);
+}
+
+#-------------------------------------------------------------------------------
+# download a specific item and return the path to the local file
+sub download {
+  my ($self, $item) = @_;
+
+  my $pdf_path = undef;
+  my $attempt = 1;
+
+  $self->reset();
+
+  do {
+    my $title = $item->title;
+    debug("Downloading item: $title [$attempt]", $debug);
+
+    $pdf_path = $self->download_item($item);
+    return $pdf_path if ($pdf_path);
+
+    $attempt++;
+  } while ($self->retry);
+
+  # download failed, else we would have returned in the loop
+
+  error('Download failed for <' . $item->id . '>', not $silent);
+
+  return undef;
+}
+
+#-------------------------------------------------------------------------------
+# reset the DownloadManager for the next download - typically used internally
+sub reset {
+  my ($self) = @_;
+
+  if ($opt_retry_count) {
+    $self->{RemainingAttempts} = $opt_retry_count;
+  }
+}
+
+#-------------------------------------------------------------------------------
+# prepare for the next download if any retries are left, else return 0
+sub retry {
+  my ($self) = @_;
+
+  # XXX should we allow infinite retries here?
+
+  return 0 unless (--$self->{RemainingAttempts});
+
+  if ($opt_retry_delay) {
+    error("Download failed, retrying in $opt_retry_delay sec", $debug);
+    sleep $opt_retry_delay;
+
+  } else {
+    error('Download failed, retrying', $debug);
+  }
+
+  $self->{RemainingAttempts};
+}
+
+#-------------------------------------------------------------------------------
+sub download_item {
+  my ($self, $item) = @_;
+
+  my $client = $self->{_client};
+  my $pdf_path = $item->local_path;
+
+  # download the zip file to a temp location
+  my $zipfile = $client->fetch_save($item->url);
+  $self->{TotalBytes} += -s $zipfile;
+  return undef unless (($zipfile) and (-s $zipfile));
+
+  extract_one($zipfile, $pdf_path);
+  unlink $zipfile or carp $!;
+
+  # make sure the file exists after extracting
+  return undef unless (-f $pdf_path);
+
+  # compare file size to expected item size
+  unless (-s $pdf_path eq $item->file_size) {
+    unlink $pdf_path or carp $!;
+    return undef;
+  }
+
+  # successful download
+  $self->{DownloadCount}++;
+
+  return $pdf_path;
+}
+
+#-------------------------------------------------------------------------------
 # extract the first member of an archive to a specifc filename
 sub extract_one {
   my ($zipfile, $tofile) = @_;
@@ -230,159 +576,7 @@ sub extract_one {
 }
 
 ################################################################################
-# download a remote file and return the content
-sub fetch_data {
-  my ($url) = @_;
-
-  debug("Downloading: $url", $debug);
-
-  my $time_start = [gettimeofday];
-  my $resp = $client->get($url);
-  my $elapsed = tv_interval($time_start);
-
-  debug('HTTP ' . $resp->status_line, $debug);
-
-  if ($resp->is_error) {
-    error('download error: ' . $resp->status_line, not $silent);
-    return undef;
-  }
-
-  my $data = $resp->decoded_content;
-
-  my $dl_length = length($data);
-  my $mbps = pretty_bytes($dl_length / $elapsed) . '/s';
-  msg("Downloaded $dl_length bytes in $elapsed seconds ($mbps)", $verbose);
-
-  return $data;
-}
-
-################################################################################
-# download a file and save it locally - NOTE file will be deleted on exit
-sub fetch_save {
-  my ($url) = @_;
-
-  my $data = fetch_data($url) or return undef;
-
-  # save the full content to a temporary file
-  my ($fh, $tmpfile) = tempfile('ustopo_plXXXX', TMPDIR => 1, UNLINK => 1);
-  debug("Saving download: $tmpfile", $debug);
-
-  # TODO error checking on I/O
-
-  # assume that the content is binary
-  binmode $fh;
-  print $fh $data;
-  close $fh;
-
-  return $tmpfile;
-}
-
-################################################################################
-# download a specific item and return the path to the local file
-sub download_item {
-  my $item = shift;
-
-  my $pdf_path = undef;
-  my $attempt = 1;
-
-  do {
-    my $name = $item->{'Map Name'} . ', ' . $item->{'Primary State'};
-    debug("Downloading map item: $name [$attempt]", $debug);
-
-    $pdf_path = try_download_item($item);
-    return $pdf_path if ($pdf_path);
-
-    $attempt = dl_retry_block($attempt);
-  } while ($attempt);
-
-  # download failed
-  return undef;
-}
-
-################################################################################
-# returns the next attempt or false when no more attempts are available
-# FIXME this is kind of a hack...  it's really just to make download_item easier
-# to read.  instead, this is a bit ugly with unexpected return behavior, IMHO
-sub dl_retry_block {
-  my $attempt = shift;
-
-  if (++$attempt > $opt_retry_count) {
-    return 0;
-  }
-
-  if ($opt_retry_delay) {
-    error("Download failed, retrying in $opt_retry_delay sec", $debug);
-    sleep $opt_retry_delay;
-
-  } else {
-    error('Download failed, retrying', $debug);
-  }
-
-  return $attempt;
-}
-
-################################################################################
-sub try_download_item {
-  my $item = shift;
-
-  my $pdf_path = get_local_path($item);
-
-  # download the zip file to a temp location
-  my $zipfile = fetch_save($item->{'Download GeoPDF'});
-  return undef unless (($zipfile) and (-s $zipfile));
-
-  extract_one($zipfile, $pdf_path);
-  unlink $zipfile or carp $!;
-
-  # make sure the file exists after extracting
-  return undef unless (-f $pdf_path);
-
-  # compare file size to published item size in catalog
-  unless (-s $pdf_path == $item->{'Byte Count'}) {
-    unlink $pdf_path or carp $!;
-    return undef;
-  }
-
-  return $pdf_path;
-}
-
-################################################################################
-# consulted - http://www.perlmonks.org/?node_id=378538
-sub pretty_bytes {
-  my $bytes = shift;
-
-  # TODO a better way to do this?
-
-  my @units = qw( B KB MB GB TB PB EB ZB YB );
-  my $unit = 0;
-
-  my $sign = ($bytes < 0) ? -1 : 1;
-  $bytes = abs($bytes);
-
-  while ($bytes > 1024) {
-    $bytes /= 1024;
-    $unit++;
-  }
-
-  sprintf('%.2f %s', $sign*$bytes, $units[$unit]);
-}
-
-################################################################################
-# pruning function for files that are not valid for the current catalog
-sub prune {
-  my $path = $File::Find::name;
-
-  # TODO remove empty directories
-  return if (-d $path);
-
-  unless (exists($files{$path})) {
-    msg("Removing file: $path", $verbose);
-    unlink $path or carp $!;
-  }
-}
-
-################################################################################
-## MAIN ENTRY
+package main;
 
 my $catalog = File::Spec->rel2abs($opt_catalog);
 printf("Loading catalog: %s\n", $catalog) unless $silent;
@@ -399,34 +593,27 @@ my $csv = Parse::CSV->new(
   }
 );
 
+my $dl = DownloadManager->new;
+
 debug('Reading catalog...', $debug);
 
-my $dl_count = 0;
+while (my $row = $csv->fetch) {
+  my $item = CatalogItem::from_csv($row);
+  my $id = $item->id;
 
-while (my $item = $csv->fetch) {
-  my $name = $item->{'Map Name'};
-  my $state = $item->{'Primary State'};
-  my $cell_id = $item->{'Cell ID'};
+  printf("Processing: %s <%s>\n", $item->title, $id) unless $silent;
 
-  printf("Processing map: %s, %s <%s>\n", $name, $state, $cell_id) unless $silent;
-
-  my $local_file = is_current($item);
+  my $local_file = $item->is_current();
 
   if ($local_file) {
     msg("Map is current: $local_file", $verbose);
 
-  } elsif (($opt_download eq 0) or ($dl_count < $opt_download)) {
-    msg("Download required <$cell_id>", $verbose);
-    $local_file = download_item($item);
-
-    if ($local_file) {
-      $dl_count++;
-    } else {
-      error("Download failed for <$cell_id>", not $silent);
-    }
+  } elsif ($dl->enabled) {
+    msg("Download required <$id>", $verbose);
+    $local_file = $dl->download($item);
 
   } else {
-    msg("Download skipped <$cell_id>", $verbose);
+    msg("Download skipped <$id>", $verbose);
   }
 
   # track all files
@@ -436,7 +623,6 @@ while (my $item = $csv->fetch) {
 }
 
 debug('Finished reading catalog.', $debug);
-debug("Completed $dl_count downloads.", $debug);
 
 if ($opt_prune) {
   printf("Pruning orphaned files and empty directories...\n") unless $silent;
@@ -500,8 +686,6 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 =item Save catalog to a local database for improved searching.
 
 =item Use a PID file.
-
-=item Provide some encapsulation for logical components (items, download attempts, etc).
 
 =item Load config options from file.
 

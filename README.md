@@ -65,5 +65,4 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 - Automatically download the latest catalog.
 - Save catalog to a local database for improved searching.
 - Use a PID file.
-- Provide some encapsulation for logical components (items, download attempts, etc).
 - Load config options from file.
