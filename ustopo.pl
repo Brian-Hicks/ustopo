@@ -249,6 +249,14 @@ sub name {
 }
 
 #-------------------------------------------------------------------------------
+# the title of this map
+sub title {
+  my ($self) = @_;
+
+  $self->name . ', ' . $self->state;
+}
+
+#-------------------------------------------------------------------------------
 # the primary state this map covers
 sub state {
   my ($self, $value) = @_;
@@ -294,6 +302,7 @@ sub is_current {
   # make sure the size of the local file matches the published item
   my $pdf_len = -s $pdf_path;
   my $pub_len = $self->file_size;
+
   debug("Local file size: $pdf_len bytes (expecting $pub_len)", $debug);
   return undef unless ($pdf_len eq $pub_len);
 
@@ -449,8 +458,8 @@ sub download {
   $self->reset();
 
   do {
-    my $name = $item->name . ', ' . $item->state;
-    debug("Downloading map item: $name [$attempt]", $debug);
+    my $title = $item->title;
+    debug("Downloading map item: $title [$attempt]", $debug);
 
     $pdf_path = $self->download_item($item);
     return $pdf_path if ($pdf_path);
@@ -592,7 +601,7 @@ while (my $row = $csv->fetch) {
   my $item = CatalogItem::from_csv($row);
   my $id = $item->id;
 
-  printf("Processing map: %s, %s <%s>\n", $item->name, $item->state, $id) unless $silent;
+  printf("Processing map: %s <%s>\n", $item->title, $id) unless $silent;
 
   my $local_file = $item->is_current();
 
