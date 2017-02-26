@@ -502,7 +502,7 @@ sub retry {
 
   # XXX should we allow infinite retries here?
 
-  return 0 unless (--$self->{_attempts});
+  return 0 unless ($self->{_attempts});
 
   if ($opt_retry_delay) {
     $logger->error('Download failed, retrying in ', $opt_retry_delay, ' sec');
@@ -512,7 +512,7 @@ sub retry {
     $logger->error('Download failed, retrying');
   }
 
-  $self->{_attempts};
+  $self->{_attempts}--;
 }
 
 #-------------------------------------------------------------------------------
