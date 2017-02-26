@@ -24,9 +24,8 @@ use Parse::CSV;
 use File::Spec;
 use File::Find;
 
-use Carp;
 use Data::Dumper;
-use Log::Message::Simple qw( :STD );
+use Log::Log4perl qw( :easy );
 
 ################################################################################
 
@@ -56,10 +55,6 @@ use Log::Message::Simple qw( :STD );
 
 =item B<--agent=string> : Override the User Agent string for the download client.
 
-=item B<--verbose> : Print informational messages (-vv for debug output).
-
-=item B<--silent> : Supress all logging output (overrides --verbose).
-
 =item B<--help> : Print a brief help message and exit.
 
 =back
@@ -68,9 +63,9 @@ use Log::Message::Simple qw( :STD );
 
 ################################################################################
 # parse command line options
-my $opt_silent = 0;
-my $opt_verbose = 0;
 my $opt_help = 0;
+
+my $opt_config = undef;
 
 my $opt_catalog = undef;
 my $opt_datadir = undef;
@@ -87,13 +82,12 @@ my $opt_mapname = '{State}/{Name}.pdf';
 GetOptions(
   'datadir=s' => \$opt_datadir,
   'catalog=s' => \$opt_catalog,
+  'config=s' => \$opt_config,
   'retry=i' => \$opt_retry_count,
   'mapname=s' => \$opt_mapname,
   'download:n' => \$opt_download,
   'no-download' => sub { $opt_download = -1 },
   'prune!' => \$opt_prune,
-  'silent|q' => \$opt_silent,
-  'verbose|v+' => \$opt_verbose,
   'agent=s' => \$opt_agent,
   'help|?' => \$opt_help
 ) or usage(1);
@@ -101,19 +95,27 @@ GetOptions(
 usage(0) if $opt_help;
 
 usage('Catalog is required') unless defined $opt_catalog;
-usage("File not found: $opt_catalog") unless -s $opt_catalog;
+usage("Catalog not found: $opt_catalog") unless -f $opt_catalog;
 usage('Data directory is required') unless defined $opt_datadir;
 usage("Directory not found: $opt_datadir") unless -d $opt_datadir;
+usage("Config file not found: $opt_config") if ($opt_config) and (not -f $opt_catalog);
 
-my $silent = $opt_silent;
-my $verbose = ($opt_verbose >= 1) && (not $silent);
-my $debug = ($opt_verbose >= 2) && (not $silent);
+if ($opt_config) {
+  Log::Log4perl->init($opt_config);
+} else {
+  Log::Log4perl->easy_init($ERROR);
+}
+
+my $logger = Log::Log4perl->get_logger('ustopo');
+
+$logger->trace('Application Started');
+$logger->debug('Configuration file: ', File::Spec->rel2abs($opt_config));
+
+$logger->debug('Filename format: ', $opt_mapname);
+$logger->debug('Download limit: ', $opt_download);
 
 my $datadir = File::Spec->rel2abs($opt_datadir);
-printf("Saving to directory: %s\n", $datadir) unless $silent;
-
-debug("Filename format: $opt_mapname", $debug);
-debug("Download limit: $opt_download", $debug);
+printf("Saving to directory: %s\n", $datadir);
 
 ################################################################################
 # a convenience method for displaying usage information & exit with an error by default
@@ -161,19 +163,19 @@ my %files = ( );
 sub prune {
   my $path = $File::Find::name;
 
+  $logger->debug('Considering: ', $path);
+
   # TODO remove empty directories
   return if (-d $path);
 
   unless (exists($files{$path})) {
-    msg("Removing file: $path", $verbose);
-    unlink $path or carp $!;
+    $logger->info('Removing file: ', $path);
+    unlink $path or $logger->logwarn($!);
   }
 }
 
 ################################################################################
 package ObjectBase;
-
-use Log::Message::Simple qw( :STD );
 
 #-------------------------------------------------------------------------------
 sub get {
@@ -206,11 +208,12 @@ package CatalogItem;
 use parent -norequire, 'ObjectBase';
 
 use File::Spec;
-use Log::Message::Simple qw( :STD );
 
 #-------------------------------------------------------------------------------
 sub new {
   my ($proto, $id) = @_;
+
+  $logger->trace('New CatalogItem: ', $id);
 
   my $self = {
     ID => $id
@@ -285,6 +288,7 @@ sub local_path {
     $filename =~ s/{$field}/$value/g;
   }
 
+  $logger->trace('local_path: ', $filename);
   File::Spec->join($datadir, $filename);
 }
 
@@ -296,14 +300,14 @@ sub is_current {
   my $pdf_path = $self->local_path;
 
   # first, make sure the file exists
-  debug("Checking for local file: $pdf_path", $debug);
+  $logger->debug('Checking for local file: ', $pdf_path);
   return undef unless -f $pdf_path;
 
   # make sure the size of the local file matches the published item
   my $pdf_len = -s $pdf_path;
   my $pub_len = $self->file_size;
 
-  debug("Local file size: $pdf_len bytes (expecting $pub_len)", $debug);
+  $logger->debug("Actual file size: $pdf_len bytes ($pub_len expected)");
   return undef unless ($pdf_len eq $pub_len);
 
   # all is well...
@@ -315,7 +319,7 @@ sub from_csv {
   my $row = shift;
 
   my $id = $row->{'Cell ID'};
-  debug("Parsing CatalogItem <$id>", $debug);
+  $logger->trace("Parsing CatalogItem <$id>");
 
   my $item = CatalogItem->new($id);
   $item->name($row->{'Map Name'});
@@ -334,10 +338,9 @@ use parent -norequire, 'ObjectBase';
 
 use Time::HiRes qw( gettimeofday tv_interval );
 use File::Temp qw( tempfile );
-use Log::Message::Simple qw( :STD );
 use LWP::UserAgent;
 
-debug("libwww-perl-$LWP::VERSION", $debug);
+$logger->debug('libwww-perl-', $LWP::VERSION);
 
 #-------------------------------------------------------------------------------
 sub new {
@@ -346,7 +349,7 @@ sub new {
   my $ua = LWP::UserAgent->new;
 
   defined $opt_agent and $ua->agent($opt_agent);
-  debug('User Agent: ' . $ua->agent, $debug);
+  $logger->trace('User Agent: ', $ua->agent);
 
   my $self = {
     _ua => $ua
@@ -361,25 +364,28 @@ sub new {
 sub fetch_data {
   my ($self, $url) = @_;
 
+  $logger->debug('Downloading URL: ', $url);
+
   my $client = $self->{_ua};
-  debug("Downloading URL: $url", $debug);
 
   my $time_start = [gettimeofday];
   my $resp = $client->get($url);
   my $elapsed = tv_interval($time_start);
 
-  debug('HTTP ' . $resp->status_line, $debug);
+  $logger->trace('HTTP ', $resp->status_line);
 
   if ($resp->is_error) {
-    error('download error: ' . $resp->status_line, not $silent);
+    $logger->error('download error: ', $resp->status_line);
     return undef;
   }
 
   my $data = $resp->decoded_content;
 
-  my $dl_length = length($data);
-  my $mbps = ::pretty_bytes($dl_length / $elapsed) . '/s';
-  msg("Downloaded $dl_length bytes in $elapsed seconds ($mbps)", $verbose);
+  if ($logger->is_info) {
+    my $dl_length = length($data);
+    my $mbps = ::pretty_bytes($dl_length / $elapsed) . '/s';
+    $logger->info("Downloaded $dl_length bytes in $elapsed seconds ($mbps)");
+  }
 
   return $data;
 }
@@ -393,7 +399,7 @@ sub fetch_save {
 
   # save the full content to a temporary file
   my ($fh, $tmpfile) = tempfile('ustopo_plXXXX', TMPDIR => 1, UNLINK => 1);
-  debug("Saving download: $tmpfile", $debug);
+  $logger->debug('Saving download: ', $tmpfile);
 
   # TODO error checking on I/O
 
@@ -413,7 +419,6 @@ use parent -norequire, 'ObjectBase';
 use File::Path qw( mkpath );
 use File::Basename;
 use Archive::Zip qw( :ERROR_CODES );
-use Log::Message::Simple qw( :STD );
 
 #-------------------------------------------------------------------------------
 sub new {
@@ -424,6 +429,7 @@ sub new {
   my $self = {
     _client => $client,
     _attempts => undef,
+
     TotalBytes => 0,
     DownloadCount => 0
   };
@@ -444,6 +450,8 @@ sub count {
 sub enabled {
   my ($self) = @_;
 
+  $logger->trace('Current download count: ', $self->count);
+
   ($opt_download eq 0) or ($self->count lt $opt_download);
 }
 
@@ -458,8 +466,7 @@ sub download {
   $self->reset();
 
   do {
-    my $title = $item->title;
-    debug("Downloading item: $title [$attempt]", $debug);
+    $logger->debug('Downloading item: ', $item->title, " [$attempt]");
 
     $pdf_path = $self->download_item($item);
     return $pdf_path if ($pdf_path);
@@ -469,7 +476,7 @@ sub download {
 
   # download failed, else we would have returned in the loop
 
-  error('Download failed for <' . $item->id . '>', not $silent);
+  $logger->error('Download failed for <', $item->id, '>');
 
   return undef;
 }
@@ -478,6 +485,8 @@ sub download {
 # reset the DownloadManager for the next download - typically used internally
 sub reset {
   my ($self) = @_;
+
+  $logger->trace('Reset DownloadManager: ', $opt_retry_count);
 
   if ($opt_retry_count) {
     $self->{_attempts} = $opt_retry_count;
@@ -489,16 +498,18 @@ sub reset {
 sub retry {
   my ($self) = @_;
 
+  $logger->trace('Retry: ', $self->{_attempts});
+
   # XXX should we allow infinite retries here?
 
   return 0 unless (--$self->{_attempts});
 
   if ($opt_retry_delay) {
-    error("Download failed, retrying in $opt_retry_delay sec", $debug);
+    $logger->error('Download failed, retrying in ', $opt_retry_delay, ' sec');
     sleep $opt_retry_delay;
 
   } else {
-    error('Download failed, retrying', $debug);
+    $logger->error('Download failed, retrying');
   }
 
   $self->{_attempts};
@@ -517,14 +528,14 @@ sub download_item {
   return undef unless (($zipfile) and (-s $zipfile));
 
   extract_one($zipfile, $pdf_path);
-  unlink $zipfile or carp $!;
+  unlink $zipfile or $logger->logwarn($!);
 
   # make sure the file exists after extracting
   return undef unless (-f $pdf_path);
 
   # compare file size to expected item size
   unless (-s $pdf_path eq $item->file_size) {
-    unlink $pdf_path or carp $!;
+    unlink $pdf_path or $logger->logwarn($!);
     return undef;
   }
 
@@ -539,14 +550,14 @@ sub download_item {
 sub extract_one {
   my ($zipfile, $tofile) = @_;
 
-  debug("Loading archive: $zipfile", $debug);
+  $logger->trace('Loading archive: ', $zipfile);
 
   # make necessary directories
   mkpath(dirname($tofile));
 
   my $zip = Archive::Zip->new($zipfile);
   unless (defined $zip) {
-    error('invalid archive file', not $silent);
+    $logger->error('invalid archive file');
     return;
   }
 
@@ -554,10 +565,10 @@ sub extract_one {
   my @members = $zip->members;
 
   if (scalar(@members) == 0) {
-    error('empty archive', not $silent);
+    $logger->error('empty archive');
     return;
   } elsif (scalar(@members) > 1) {
-    error('unexpected entries in archive', not $silent);
+    $logger->error('unexpected entries in archive');
     return;
   }
 
@@ -565,23 +576,23 @@ sub extract_one {
 
   my $name = $entry->fileName;
   my $full_size = $entry->uncompressedSize;
-  debug("Extracting: $name ($full_size bytes)", $debug);
+  $logger->debug('Extracting: ', $entry->fileName, " ($full_size bytes)");
 
   if ($entry->extractToFileNamed($tofile) != AZ_OK) {
-    error('error writing file', not $silent);
+    $logger->error('error writing file');
     return;
   }
 
-  debug("Wrote: $tofile", $debug);
+  $logger->debug('Wrote: ', $tofile);
 }
 
 ################################################################################
 package main;
 
 my $catalog = File::Spec->rel2abs($opt_catalog);
-printf("Loading catalog: %s\n", $catalog) unless $silent;
+printf("Loading catalog: %s\n", $catalog);
 
-debug("Parsing catalog file: $opt_catalog", $debug);
+$logger->debug('Parsing catalog file: ', $opt_catalog);
 
 my $csv = Parse::CSV->new(
   file => $catalog,
@@ -595,25 +606,25 @@ my $csv = Parse::CSV->new(
 
 my $dl = DownloadManager->new;
 
-debug('Reading catalog...', $debug);
+$logger->debug('Reading catalog...');
 
 while (my $row = $csv->fetch) {
   my $item = CatalogItem::from_csv($row);
   my $id = $item->id;
 
-  printf("Processing: %s <%s>\n", $item->title, $id) unless $silent;
+  printf("Processing: %s <%s>\n", $item->title, $id);
 
   my $local_file = $item->is_current();
 
   if ($local_file) {
-    msg("Map is current: $local_file", $verbose);
+    $logger->info('Map is current: ', $local_file);
 
   } elsif ($dl->enabled) {
-    msg("Download required <$id>", $verbose);
+    $logger->info('Download required <', $item->id, '>');
     $local_file = $dl->download($item);
 
   } else {
-    msg("Download skipped <$id>", $verbose);
+    $logger->info('Download skipped <', $item->id, '>');
   }
 
   # track all files
@@ -622,18 +633,19 @@ while (my $row = $csv->fetch) {
   }
 }
 
-debug('Finished reading catalog.', $debug);
+$logger->debug('Finished reading catalog.');
 
-my $dl_count = $dl->count;
-if (($dl_count) and (not $silent)) {
-  printf("Downloaded %d item%s", $dl_count, ($dl_count eq 1) ? '' : 's');
+if ($dl->count) {
+  printf("Downloaded %d item%s", $dl->count, ($dl->count eq 1) ? '' : 's');
   printf(" (%s).\n", pretty_bytes($dl->{TotalBytes}));
 }
 
 if ($opt_prune) {
-  printf("Pruning orphaned files and empty directories...\n") unless $silent;
+  printf("Pruning orphaned files and empty directories...\n");
   finddepth(\&prune, $datadir);
 }
+
+$logger->trace('Application Finished');
 
 __END__
 
@@ -675,7 +687,7 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 
 =over
 
-=item B<Log::Message::Simple> - debug and logging output
+=item B<Log::Log4Perl> - debug and logging output
 
 =item B<Parse::CSV> - used to parse the catalog file
 
