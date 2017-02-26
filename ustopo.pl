@@ -253,7 +253,7 @@ sub name {
 sub title {
   my ($self) = @_;
 
-  $self->name . ', ' . $self->state;
+  sprintf('USGS US Topo map for %s, %s %d', $self->name, $self->state, $self->year);
 }
 
 #-------------------------------------------------------------------------------
@@ -271,7 +271,7 @@ sub year {
 }
 
 #-------------------------------------------------------------------------------
-# generate the full file path for a given record - the argument is a hashref
+# generate the full file path for the current item
 sub local_path {
   my ($self) = @_;
 
@@ -362,7 +362,7 @@ sub fetch_data {
   my ($self, $url) = @_;
 
   my $client = $self->{_ua};
-  debug("Downloading: $url", $debug);
+  debug("Downloading URL: $url", $debug);
 
   my $time_start = [gettimeofday];
   my $resp = $client->get($url);
@@ -459,7 +459,7 @@ sub download {
 
   do {
     my $title = $item->title;
-    debug("Downloading map item: $title [$attempt]", $debug);
+    debug("Downloading item: $title [$attempt]", $debug);
 
     $pdf_path = $self->download_item($item);
     return $pdf_path if ($pdf_path);
@@ -601,7 +601,7 @@ while (my $row = $csv->fetch) {
   my $item = CatalogItem::from_csv($row);
   my $id = $item->id;
 
-  printf("Processing map: %s <%s>\n", $item->title, $id) unless $silent;
+  printf("Processing: %s <%s>\n", $item->title, $id) unless $silent;
 
   my $local_file = $item->is_current();
 
