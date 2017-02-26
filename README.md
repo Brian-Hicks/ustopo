@@ -10,7 +10,8 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 
 - **--data=dir** : Directory location to save maps when downloading.
 - **--catalog=file** : CSV catalog file from the USGS.
-- **--download** : Download new map items (default behavior).
+- **--download** : Download all new map items (default behavior).
+- **--download=max** : Download up to max items (0 = no limit).
 - **--no-download** : Do not download new map items.
 - **--prune** : Remove extra files from data directory.
 - **--no-prune** : Do not remove extra files (default behavior).
@@ -37,6 +38,11 @@ In order to use **ustopo.pl**, you will need to download the latest CSV catalog.
 is updated regularly as a zip archive.  This script operates on the `topomaps_all.csv` file
 in that archive.  It will only download current maps from the US Topo series.
 
+To control the number of downloads, use the `--download=max` option.  Specifying a `max` value
+of `0` will enable unlimited downloads.  Otherwise, the program will only download up to the
+given value.  A negative value will disable all downloads (identical to `--no-download`).  Note
+that failed downloads do not count against the maximum.
+
 The `--mapname` format string uses fields from the catalog as placeholders.  The default value
 is `{Primary State}/{Map Name}.pdf` which will place the map in a subfolder by state.  Each
 placeholder is placed in braces and will be expanded for each map.  For additional fields, read
@@ -58,7 +64,6 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 
 - Automatically download the latest catalog.
 - Save catalog to a local database for improved searching.
-- Specify maximum number of maps to download per session (default to unlimited).
 - Use a PID file.
 - Provide some encapsulation for logical components (items, download attempts, etc).
 - Load config options from file.

@@ -47,7 +47,9 @@ use Data::Dumper;
 
 =item B<--catalog=file> : CSV catalog file from the USGS.
 
-=item B<--download> : Download new map items (default behavior).
+=item B<--download> : Download all new map items (default behavior).
+
+=item B<--download=max> : Download up to max items (0 = no limit).
 
 =item B<--no-download> : Do not download new map items.
 
@@ -97,7 +99,7 @@ my $opt_help = 0;
 my $opt_catalog = undef;
 my $opt_datadir = undef;
 
-my $opt_download = 1;
+my $opt_download = 0;
 my $opt_prune = 0;
 
 my $opt_retry_count = 3;
@@ -111,7 +113,8 @@ GetOptions(
   'catalog=s' => \$opt_catalog,
   'retry=i' => \$opt_retry_count,
   'mapname=s' => \$opt_mapname,
-  'download!' => \$opt_download,
+  'download:n' => \$opt_download,
+  'no-download' => sub { $opt_download = -1 },
   'prune!' => \$opt_prune,
   'silent|q' => \$opt_silent,
   'verbose|v+' => \$opt_verbose,
@@ -133,10 +136,8 @@ my $debug = ($opt_verbose >= 2) && (not $silent);
 my $datadir = File::Spec->rel2abs($opt_datadir);
 printf("Saving to directory: %s\n", $datadir) unless $silent;
 
-my $catalog = File::Spec->rel2abs($opt_catalog);
-printf("Loading catalog: %s\n", $catalog) unless $silent;
-
 debug("Filename format: $opt_mapname", $debug);
+debug("Download limit: $opt_download", $debug);
 
 ################################################################################
 # configure the common client for download files
@@ -295,7 +296,7 @@ sub download_item {
   } while ($attempt);
 
   # download failed
-  return $pdf_path;
+  return undef;
 }
 
 ################################################################################
@@ -383,6 +384,9 @@ sub prune {
 ################################################################################
 ## MAIN ENTRY
 
+my $catalog = File::Spec->rel2abs($opt_catalog);
+printf("Loading catalog: %s\n", $catalog) unless $silent;
+
 debug("Parsing catalog file: $opt_catalog", $debug);
 
 my $csv = Parse::CSV->new(
@@ -397,6 +401,8 @@ my $csv = Parse::CSV->new(
 
 debug('Reading catalog...', $debug);
 
+my $dl_count = 0;
+
 while (my $item = $csv->fetch) {
   my $name = $item->{'Map Name'};
   my $state = $item->{'Primary State'};
@@ -408,14 +414,13 @@ while (my $item = $csv->fetch) {
 
   if ($local_file) {
     msg("Map is current: $local_file", $verbose);
-    $files{$local_file} = 1;
 
-  } elsif ($opt_download) {
+  } elsif (($opt_download eq 0) or ($dl_count < $opt_download)) {
     msg("Download required <$cell_id>", $verbose);
     $local_file = download_item($item);
 
     if ($local_file) {
-      $files{$local_file} = 1;
+      $dl_count++;
     } else {
       error("Download failed for <$cell_id>", not $silent);
     }
@@ -423,9 +428,15 @@ while (my $item = $csv->fetch) {
   } else {
     msg("Download skipped <$cell_id>", $verbose);
   }
+
+  # track all files
+  if ($local_file) {
+    $files{$local_file} = 1;
+  }
 }
 
 debug('Finished reading catalog.', $debug);
+debug("Completed $dl_count downloads.", $debug);
 
 if ($opt_prune) {
   printf("Pruning orphaned files and empty directories...\n") unless $silent;
@@ -451,6 +462,11 @@ such as Adobe Acrobat Reader that allows you to configure which layers are visib
 In order to use B<ustopo.pl>, you will need to download the latest CSV catalog.  This catalog
 is updated regularly as a zip archive.  This script operates on the C<topomaps_all.csv> file
 in that archive.  It will only download current maps from the US Topo series.
+
+To control the number of downloads, use the C<--download=max> option.  Specifying a C<max> value
+of C<0> will enable unlimited downloads.  Otherwise, the program will only download up to the
+given value.  A negative value will disable all downloads (identical to C<--no-download>).  Note
+that failed downloads do not count against the maximum.
 
 The C<--mapname> format string uses fields from the catalog as placeholders.  The default value
 is C<{Primary State}/{Map Name}.pdf> which will place the map in a subfolder by state.  Each
@@ -482,8 +498,6 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 =item Automatically download the latest catalog.
 
 =item Save catalog to a local database for improved searching.
-
-=item Specify maximum number of maps to download per session (default to unlimited).
 
 =item Use a PID file.
 
