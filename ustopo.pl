@@ -423,9 +423,9 @@ sub new {
 
   my $self = {
     _client => $client,
-    DownloadCount => 0,
+    _attempts => undef,
     TotalBytes => 0,
-    RemainingAttempts => undef
+    DownloadCount => 0
   };
 
   bless($self);
@@ -480,7 +480,7 @@ sub reset {
   my ($self) = @_;
 
   if ($opt_retry_count) {
-    $self->{RemainingAttempts} = $opt_retry_count;
+    $self->{_attempts} = $opt_retry_count;
   }
 }
 
@@ -491,7 +491,7 @@ sub retry {
 
   # XXX should we allow infinite retries here?
 
-  return 0 unless (--$self->{RemainingAttempts});
+  return 0 unless (--$self->{_attempts});
 
   if ($opt_retry_delay) {
     error("Download failed, retrying in $opt_retry_delay sec", $debug);
@@ -501,7 +501,7 @@ sub retry {
     error('Download failed, retrying', $debug);
   }
 
-  $self->{RemainingAttempts};
+  $self->{_attempts};
 }
 
 #-------------------------------------------------------------------------------
@@ -624,6 +624,12 @@ while (my $row = $csv->fetch) {
 
 debug('Finished reading catalog.', $debug);
 
+my $dl_count = $dl->count;
+if (($dl_count) and (not $silent)) {
+  printf("Downloaded %d item%s", $dl_count, ($dl_count eq 1) ? '' : 's');
+  printf(" (%s).\n", pretty_bytes($dl->{TotalBytes}));
+}
+
 if ($opt_prune) {
   printf("Pruning orphaned files and empty directories...\n") unless $silent;
   finddepth(\&prune, $datadir);
@@ -688,6 +694,8 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 =item Use a PID file.
 
 =item Load config options from file.
+
+=item Improve logging (Log4Perl?).
 
 =back
 
