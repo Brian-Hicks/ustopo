@@ -98,7 +98,7 @@ usage('Catalog is required') unless defined $opt_catalog;
 usage("Catalog not found: $opt_catalog") unless -f $opt_catalog;
 usage('Data directory is required') unless defined $opt_datadir;
 usage("Directory not found: $opt_datadir") unless -d $opt_datadir;
-usage("Config file not found: $opt_config") if ($opt_config) and (not -f $opt_catalog);
+usage("Config file not found: $opt_config") if (($opt_config) && (not -f $opt_catalog));
 
 if ($opt_config) {
   Log::Log4perl->init($opt_config);
@@ -308,7 +308,7 @@ sub is_current {
   my $pub_len = $self->file_size;
 
   $logger->debug("Actual file size: $pdf_len bytes ($pub_len expected)");
-  return undef unless ($pdf_len eq $pub_len);
+  return undef unless ($pdf_len == $pub_len);
 
   # all is well...
   return $pdf_path;
@@ -542,7 +542,7 @@ sub download_item {
   # download the zip file to a temp location
   my $zipfile = $client->fetch_save($item->url);
   $self->{TotalBytes} += -s $zipfile;
-  return undef unless (($zipfile) and (-s $zipfile));
+  return undef unless (($zipfile) && (-s $zipfile));
 
   extract_one($zipfile, $pdf_path);
   unlink $zipfile or $logger->logwarn($!);
@@ -551,7 +551,7 @@ sub download_item {
   return undef unless (-f $pdf_path);
 
   # compare file size to expected item size
-  unless (-s $pdf_path eq $item->file_size) {
+  unless (-s $pdf_path == $item->file_size) {
     unlink $pdf_path or $logger->logwarn($!);
     return undef;
   }
@@ -654,7 +654,7 @@ while (my $row = $csv->fetch) {
 $logger->debug('Finished reading catalog.');
 
 if ($dl->count) {
-  printf("Downloaded %d item%s", $dl->count, ($dl->count eq 1) ? '' : 's');
+  printf("Downloaded %d item%s", $dl->count, ($dl->count == 1) ? '' : 's');
   printf(" (%s)\n", pretty_bytes($dl->{TotalBytes}));
 }
 
