@@ -22,7 +22,6 @@ use Pod::Usage;
 
 use Parse::CSV;
 use File::Spec;
-use File::Find;
 
 use Data::Dumper;
 use Log::Log4perl qw( :easy );
@@ -34,6 +33,8 @@ use Log::Log4perl qw( :easy );
 =head1 OPTIONS
 
 =over
+
+=item B<--config=cfg> : Load options from specific config file.
 
 =item B<--data=dir> : Directory location to save maps when downloading.
 
@@ -48,12 +49,6 @@ use Log::Log4perl qw( :easy );
 =item B<--prune> : Remove extra files from data directory.
 
 =item B<--no-prune> : Do not remove extra files (default behavior).
-
-=item B<--mapname=string> : Specify the format string for map filenames.
-
-=item B<--retry=num> : Number of retries for failed downloads (default=3).
-
-=item B<--agent=string> : Override the User Agent string for the download client.
 
 =item B<--help> : Print a brief help message and exit.
 
@@ -83,25 +78,25 @@ GetOptions(
   'datadir=s' => \$opt_datadir,
   'catalog=s' => \$opt_catalog,
   'config=s' => \$opt_config,
-  'retry=i' => \$opt_retry_count,
-  'mapname=s' => \$opt_mapname,
   'download:n' => \$opt_download,
   'no-download' => sub { $opt_download = -1 },
   'prune!' => \$opt_prune,
-  'agent=s' => \$opt_agent,
   'help|?' => \$opt_help
 ) or usage(1);
 
 usage(0) if $opt_help;
 
+usage("Config file not found: $opt_config") if (($opt_config) && (not -f $opt_catalog));
 usage('Catalog is required') unless defined $opt_catalog;
 usage("Catalog not found: $opt_catalog") unless -f $opt_catalog;
 usage('Data directory is required') unless defined $opt_datadir;
 usage("Directory not found: $opt_datadir") unless -d $opt_datadir;
-usage("Config file not found: $opt_config") if (($opt_config) && (not -f $opt_catalog));
+
+my $cfgfile = undef;
 
 if ($opt_config) {
-  Log::Log4perl->init($opt_config);
+  $cfgfile = File::Spec->rel2abs($opt_config);
+  Log::Log4perl->init($cfgfile);
 } else {
   Log::Log4perl->easy_init($ERROR);
 }
@@ -109,7 +104,7 @@ if ($opt_config) {
 my $logger = Log::Log4perl->get_logger('ustopo');
 $logger->trace('Application Started');
 
-$logger->debug('Configuration file: ', File::Spec->rel2abs($opt_config));
+$logger->debug('Configuration file: ', $cfgfile);
 $logger->debug('Filename format: ', $opt_mapname);
 $logger->debug('Download limit: ', $opt_download);
 
@@ -152,25 +147,6 @@ sub pretty_bytes {
   }
 
   sprintf('%.2f %s', $sign*$bytes, $units[$unit]);
-}
-
-################################################################################
-# pruning function for files that are not valid for the current catalog
-
-my %files = ( );
-
-sub prune {
-  my $path = $File::Find::name;
-
-  $logger->debug('Considering: ', $path);
-
-  # TODO remove empty directories
-  return if (-d $path);
-
-  unless (exists($files{$path})) {
-    $logger->info('Removing file: ', $path);
-    unlink $path or $logger->logwarn($!);
-  }
 }
 
 ################################################################################
@@ -603,6 +579,61 @@ sub extract_one {
 }
 
 ################################################################################
+package FileManager;
+
+use parent -norequire, 'ObjectBase';
+
+use File::Find;
+
+#-------------------------------------------------------------------------------
+sub new {
+  my ($proto) = @_;
+
+  my $self = {
+    _files => { }
+  };
+
+  bless($self);
+  return $self;
+}
+
+#-------------------------------------------------------------------------------
+# adds the specified file to the FileManager
+sub add {
+  my ($self, $file) = @_;
+  $self->{_files}->{$file} = 1;
+}
+
+#-------------------------------------------------------------------------------
+# prune files from the give directory that are not being managed
+sub prune {
+  my ($self, $dir) = @_;
+  $logger->trace('pruning: ', $dir);
+
+  my $files = $self->{_files};
+
+  finddepth(sub {
+    my $path = $File::Find::name;
+    $logger->trace('prune ? ', $path);
+
+    return if exists($files->{$path});
+
+    if (-d $path) {
+      # rmdir fails if not empty
+      if (rmdir $path) {
+        $logger->info('Removed empty directory: ', $path);
+      } else {
+        $logger->trace('Directory ignored: ', $!);
+      }
+
+    } else {
+      $logger->info('Removing file: ', $path);
+      unlink $path or $logger->logwarn($!);
+    }
+  }, $dir);
+}
+
+################################################################################
 package main;
 
 my $catalog = File::Spec->rel2abs($opt_catalog);
@@ -620,7 +651,8 @@ my $csv = Parse::CSV->new(
   }
 );
 
-my $dl = DownloadManager->new;
+my $dlmgr = DownloadManager->new;
+my $filmgr = FileManager->new;
 
 while (my $row = $csv->fetch) {
   $logger->trace('Reading next item from catalog... ', $csv->row);
@@ -636,30 +668,33 @@ while (my $row = $csv->fetch) {
   if ($local_file) {
     $logger->info('Map is current: ', $local_file);
 
-  } elsif ($dl->enabled) {
+  } elsif ($dlmgr->enabled) {
     $logger->info('Download required <', $item->id, '>');
-    $local_file = $dl->download($item);
+    $local_file = $dlmgr->download($item);
 
   } else {
     $logger->info('Download skipped <', $item->id, '>');
   }
 
   # track all files
-  if ($local_file) {
-    $files{$local_file} = 1;
-  }
+  $filmgr->add($local_file) if ($local_file);
 }
 
 $logger->debug('Finished reading catalog.');
 
-if ($dl->count) {
-  printf("Downloaded %d item%s", $dl->count, ($dl->count == 1) ? '' : 's');
-  printf(" (%s)\n", pretty_bytes($dl->{TotalBytes}));
+if ($dlmgr->count) {
+  printf("Downloaded %d item%s", $dlmgr->count, ($dlmgr->count == 1) ? '' : 's');
+  printf(" (%s)\n", pretty_bytes($dlmgr->{TotalBytes}));
 }
+
+# make sure the FileManager knows about system files
+$filmgr->add($datadir);
+$filmgr->add($catalog);
+$filmgr->add($cfgfile);
 
 if ($opt_prune) {
   printf("Pruning orphaned files and empty directories...\n");
-  finddepth(\&prune, $datadir);
+  $filmgr->prune($datadir);
 }
 
 $logger->trace('Application Finished');
@@ -723,8 +758,6 @@ Use in accordance with the terms of the L<USGS|https://www2.usgs.gov/faq/?q=cate
 =item Use a PID file.
 
 =item Load config options from file.
-
-=item Improve logging (Log4Perl?).
 
 =back
 

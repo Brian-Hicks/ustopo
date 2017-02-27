@@ -8,6 +8,7 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 
 # OPTIONS
 
+- **--config=cfg** : Load options from specific config file.
 - **--data=dir** : Directory location to save maps when downloading.
 - **--catalog=file** : CSV catalog file from the USGS.
 - **--download** : Download all new map items (default behavior).
@@ -15,11 +16,6 @@ ustopo.pl -- Maintains an offline catalog of US Topo maps.
 - **--no-download** : Do not download new map items.
 - **--prune** : Remove extra files from data directory.
 - **--no-prune** : Do not remove extra files (default behavior).
-- **--mapname=string** : Specify the format string for map filenames.
-- **--retry=num** : Number of retries for failed downloads (default=3).
-- **--agent=string** : Override the User Agent string for the download client.
-- **--verbose** : Print informational messages (-vv for debug output).
-- **--silent** : Supress all logging output (overrides --verbose).
 - **--help** : Print a brief help message and exit.
 
 # DESCRIPTION
@@ -56,7 +52,7 @@ Use in accordance with the terms of the [USGS](https://www2.usgs.gov/faq/?q=cate
 
 # REQUIREMENTS
 
-- **Log::Message::Simple** - debug and logging output
+- **Log::Log4Perl** - debug and logging output
 - **Parse::CSV** - used to parse the catalog file
 - **Mozilla::CA** - recommended for HTTPS connections
 
