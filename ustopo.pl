@@ -638,7 +638,6 @@ while (my $row = $csv->fetch) {
     $local_file = $dl->download($item);
 
   } else {
-die;
     $logger->info('Download skipped <', $item->id, '>');
   }
 
