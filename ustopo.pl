@@ -256,7 +256,7 @@ sub name {
 sub title {
   my ($self) = @_;
 
-  sprintf('USGS US Topo map for %s, %s %d', $self->name, $self->state, $self->year);
+  sprintf('USTopo map for %s, %s %d', $self->name, $self->state, $self->year);
 }
 
 #-------------------------------------------------------------------------------
