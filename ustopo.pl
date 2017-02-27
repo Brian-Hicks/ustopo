@@ -450,20 +450,24 @@ sub count {
 sub enabled {
   my ($self) = @_;
 
-  my $enabled = 0;
+  my $remaining = 0;
 
-  if ($opt_download eq 0) {
-    $logger->debug('Download limit disabled');
-    $enabled = 1;
+  if ($opt_download == 0) {
+    $logger->debug('Remaining downloads: no limit');
+    $remaining = 1;
 
-  } elsif ($self->count lt $opt_download) {
-    $logger->debug('Remaining downloads: ', $opt_download - $self->count);
-    $enabled = 1;
+  } elsif ($self->count < $opt_download) {
+    $remaining = $opt_download - $self->count;
+    $logger->debug('Remaining downloads: ', $remaining);
+
+  } else {
+    $remaining = 0;
+    $logger->debug('Remaining downloads: 0');
   }
 
-  $logger->trace('DownloadManager enabled: ', ($enabled) ? 'yes' : 'no');
+  $logger->trace('DownloadManager enabled: ', ($remaining) ? 'yes' : 'no');
 
-  return $enabled;
+  return $remaining;
 }
 
 #-------------------------------------------------------------------------------
