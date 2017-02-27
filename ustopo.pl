@@ -327,7 +327,7 @@ sub from_csv {
   $item->file_size($row->{'Byte Count'});
   $item->year($row->{'Date On Map'});
 
-  $item;
+  return $item;
 }
 
 ################################################################################
