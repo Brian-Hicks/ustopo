@@ -605,7 +605,7 @@ sub add {
 }
 
 #-------------------------------------------------------------------------------
-# prune files from the give directory that are not being managed
+# prune files from the given directory that are not being managed
 sub prune {
   my ($self, $dir) = @_;
   $logger->trace('pruning: ', $dir);
