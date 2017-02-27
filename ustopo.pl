@@ -450,15 +450,28 @@ sub count {
 sub enabled {
   my ($self) = @_;
 
-  $logger->trace('Current download count: ', $self->count);
+  my $enabled = 0;
 
-  ($opt_download eq 0) or ($self->count lt $opt_download);
+  if ($opt_download eq 0) {
+    $logger->debug('Download limit disabled');
+    $enabled = 1;
+
+  } elsif ($self->count lt $opt_download) {
+    $logger->debug('Remaining downloads: ', $opt_download - $self->count);
+    $enabled = 1;
+  }
+
+  $logger->trace('DownloadManager enabled: ', ($enabled) ? 'yes' : 'no');
+
+  return $enabled;
 }
 
 #-------------------------------------------------------------------------------
 # download a specific item and return the path to the local file
 sub download {
   my ($self, $item) = @_;
+
+  $logger->trace('Current download count: ', $self->count);
 
   my $pdf_path = undef;
   my $attempt = 1;
@@ -486,7 +499,7 @@ sub download {
 sub reset {
   my ($self) = @_;
 
-  $logger->trace('Reset DownloadManager: ', $opt_retry_count);
+  $logger->trace('Reset DownloadManager - retry:', $opt_retry_count);
 
   if ($opt_retry_count) {
     $self->{_attempts} = $opt_retry_count;
@@ -612,6 +625,7 @@ while (my $row = $csv->fetch) {
   my $item = CatalogItem::from_csv($row);
   my $id = $item->id;
 
+  $logger->info('Processing: ', $item->title, " <$id>");
   printf("Processing: %s <%s>\n", $item->title, $id);
 
   my $local_file = $item->is_current();
@@ -624,6 +638,7 @@ while (my $row = $csv->fetch) {
     $local_file = $dl->download($item);
 
   } else {
+die;
     $logger->info('Download skipped <', $item->id, '>');
   }
 
@@ -637,7 +652,7 @@ $logger->debug('Finished reading catalog.');
 
 if ($dl->count) {
   printf("Downloaded %d item%s", $dl->count, ($dl->count eq 1) ? '' : 's');
-  printf(" (%s).\n", pretty_bytes($dl->{TotalBytes}));
+  printf(" (%s)\n", pretty_bytes($dl->{TotalBytes}));
 }
 
 if ($opt_prune) {
