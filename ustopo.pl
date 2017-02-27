@@ -107,15 +107,14 @@ if ($opt_config) {
 }
 
 my $logger = Log::Log4perl->get_logger('ustopo');
-
 $logger->trace('Application Started');
-$logger->debug('Configuration file: ', File::Spec->rel2abs($opt_config));
 
+$logger->debug('Configuration file: ', File::Spec->rel2abs($opt_config));
 $logger->debug('Filename format: ', $opt_mapname);
 $logger->debug('Download limit: ', $opt_download);
 
 my $datadir = File::Spec->rel2abs($opt_datadir);
-printf("Saving to directory: %s\n", $datadir);
+$logger->info('Saving to directory: ', $datadir);
 
 ################################################################################
 # a convenience method for displaying usage information & exit with an error by default
