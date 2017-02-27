@@ -626,10 +626,12 @@ my $dl = DownloadManager->new;
 $logger->debug('Reading catalog...');
 
 while (my $row = $csv->fetch) {
+  $logger->trace('Reading next item from catalog... ', $csv->row);
+
   my $item = CatalogItem::from_csv($row);
   my $id = $item->id;
 
-  $logger->info('Processing: ', $item->title, " <$id>");
+  $logger->info('Processing: ', $item->title);
   printf("Processing: %s <%s>\n", $item->title, $id);
 
   my $local_file = $item->is_current();
