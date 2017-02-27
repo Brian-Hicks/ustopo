@@ -623,8 +623,6 @@ my $csv = Parse::CSV->new(
 
 my $dl = DownloadManager->new;
 
-$logger->debug('Reading catalog...');
-
 while (my $row = $csv->fetch) {
   $logger->trace('Reading next item from catalog... ', $csv->row);
 
