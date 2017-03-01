@@ -327,7 +327,9 @@ sub new {
   $logger->trace('User Agent: ', $ua->agent);
 
   my $self = {
-    _ua => $ua
+    _ua => $ua,
+
+    TotalBytes => 0
   };
 
   bless($self);
@@ -356,8 +358,10 @@ sub fetch_data {
 
   my $data = $resp->decoded_content;
 
+  my $dl_length = length($data);
+  $self->{TotalBytes} += -s $dl_length;
+
   if ($logger->is_info) {
-    my $dl_length = length($data);
     my $mbps = ::pretty_bytes($dl_length / $elapsed) . '/s';
     $logger->info("Downloaded $dl_length bytes in $elapsed seconds ($mbps)");
   }
@@ -405,7 +409,6 @@ sub new {
     _client => $client,
     _attempts => undef,
 
-    TotalBytes => 0,
     DownloadCount => 0
   };
 
@@ -516,7 +519,6 @@ sub download_item {
 
   # download the zip file to a temp location
   my $zipfile = $client->fetch_save($item->url);
-  $self->{TotalBytes} += -s $zipfile;
   return undef unless (($zipfile) && (-s $zipfile));
 
   extract_one($zipfile, $pdf_path);
@@ -685,7 +687,7 @@ $logger->debug('Finished reading catalog.');
 
 if ($dlmgr->count) {
   printf("Downloaded %d item%s", $dlmgr->count, ($dlmgr->count == 1) ? '' : 's');
-  printf(" (%s)\n", pretty_bytes($dlmgr->{TotalBytes}));
+  printf(" (%s)\n", pretty_bytes($dlmgr->{_client}->{TotalBytes}));
 }
 
 # make sure the FileManager knows about system files
