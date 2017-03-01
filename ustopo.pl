@@ -601,6 +601,7 @@ sub new {
 # adds the specified file to the FileManager
 sub add {
   my ($self, $file) = @_;
+  $logger->trace('tracking: ', $file);
   $self->{_files}->{$file} = 1;
 }
 
@@ -614,7 +615,7 @@ sub prune {
 
   finddepth(sub {
     my $path = $File::Find::name;
-    $logger->trace('prune ? ', $path);
+    $logger->trace('examining: ', $path);
 
     return if exists($files->{$path});
 
