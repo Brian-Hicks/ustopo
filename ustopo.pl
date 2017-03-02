@@ -359,7 +359,7 @@ sub fetch_data {
   my $data = $resp->decoded_content;
 
   my $dl_length = length($data);
-  $self->{TotalBytes} += -s $dl_length;
+  $self->{TotalBytes} += $dl_length;
 
   if ($logger->is_info) {
     my $mbps = ::pretty_bytes($dl_length / $elapsed) . '/s';
